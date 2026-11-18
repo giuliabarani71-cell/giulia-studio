@@ -542,3 +542,30 @@ label > input, label > textarea, label > select, label > .copyrow { margin-top: 
 .tfilter { width: auto; margin: -10px 0 18px; font-size: 14px; padding: 7px 34px 7px 12px; border-radius: 10px; }
 .crow .chip { flex: none; }
 @media (max-width: 760px) { .crow .chip.theme { display: none; } .notif-panel { position: fixed; left: 12px; right: 12px; top: 60px; width: auto; } }
+
+/* ---------- Linea del tempo del progetto ---------- */
+.timeline { list-style: none; display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; margin: -8px 0 22px; padding: 0; position: relative; }
+.timeline li { position: relative; display: flex; flex-direction: column; gap: 2px; padding: 14px 8px 0 0; font-size: 13px; color: var(--muted); }
+.timeline li::before { content: ""; position: absolute; top: 5px; left: 12px; right: 0; height: 2px; background: var(--line-2); }
+.timeline li:last-child::before { display: none; }
+.timeline li.done::before { background: var(--accent); }
+.timeline .tl-dot { position: absolute; top: 0; left: 0; width: 12px; height: 12px; border-radius: 50%; background: var(--surface); border: 2px solid var(--line); box-sizing: border-box; }
+.timeline li.done .tl-dot { background: var(--accent); border-color: var(--accent); }
+.timeline .tl-l { font-weight: 600; color: var(--text); }
+.timeline li:not(.done) .tl-l { color: var(--muted); font-weight: 500; }
+.timeline .tl-d { font-variant-numeric: tabular-nums; }
+.dates { display: block; margin-top: 2px; }
+@media (max-width: 760px) { .timeline { grid-template-columns: repeat(2, 1fr); row-gap: 12px; } .timeline li:nth-child(2)::before { display: none; } }
+
+/* ---------- Cliente: tipo e contatti ---------- */
+.chip.privato { background: rgba(52, 199, 89, 0.14); color: var(--green); font-weight: 600; }
+.chip.azienda { background: rgba(175, 82, 222, 0.14); color: #a050d0; font-weight: 600; }
+.type-seg { margin-bottom: 14px; }
+.contacts { margin: 4px 0 0; font-size: 15px; }
+.contacts a { white-space: nowrap; }
+
+/* ---------- Traduzioni per Giulia ---------- */
+.tr { display: block; margin-top: 3px; font-size: 14px; color: var(--accent); }
+a.tr { color: var(--muted); text-decoration: underline; }
+.tr-q { display: block; font-size: 13px; color: var(--muted); font-style: italic; margin-top: 1px; }
+.rgrid .tr { font-size: 12px; }
