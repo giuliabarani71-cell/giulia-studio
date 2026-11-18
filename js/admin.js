@@ -372,6 +372,32 @@
       .catch((e) => console.warn("Ottimizzazione foto non riuscita", e))
       .finally(() => optimizing.delete(pid));
   };
+  // Elimina il progetto con tutto ciò che lo riguarda: foto, scelte del cliente (response),
+  // notifiche e la copia delle scelte salvata nel profilo del cliente (storico e preferenze per tema)
+  A.deleteProjectFully = async (p) => {
+    await GB.db.deleteProject(p.id); // foto, coppie di stile, scelte e progetto
+    try {
+      await GB.db.deleteNotificationsFor(p.id);
+    } catch (e) {
+      console.warn("Notifiche non eliminate", e);
+    }
+    A.notif.list = A.notif.list.filter((n) => n.projectId !== p.id);
+    A.notif.paint();
+    if (!p.clientId) return;
+    const c = await GB.db.getClient(p.clientId).catch(() => null);
+    if (!c) return;
+    let changed = false;
+    if ((c.history || []).some((h) => h.projectId === p.id)) {
+      c.history = c.history.filter((h) => h.projectId !== p.id);
+      changed = true;
+    }
+    for (const [tid, t] of Object.entries(c.prefsByTheme || {}))
+      if (t.projectId === p.id) {
+        delete c.prefsByTheme[tid];
+        changed = true;
+      }
+    if (changed) await GB.db.saveClient(c);
+  };
   A.pairCount = (imgs) =>
     GB.AXES.filter((ax) => ["a", "b"].every((sd) => imgs.some((i) => i.kind === "style" && i.axis === ax.key && i.side === sd))).length;
 
@@ -455,9 +481,22 @@
       }
     });
     $("#delP").onclick = async () => {
-      if (!(await GB.confirm("Eliminare il progetto?", `“${esc(p.title)}” e tutte le sue foto verranno cancellati definitivamente.`, "Elimina", true))) return;
-      await GB.db.deleteProject(p.id);
-      GB.toast("Progetto eliminato");
+      if (
+        !(await GB.confirm(
+          "Eliminare il progetto?",
+          `“${esc(p.title)}” verrà cancellato definitivamente insieme a foto, coppie di stile, <b>scelte del cliente</b>, notifiche e alla voce salvata nel profilo di ${esc(
+            p.clientName || "cliente"
+          )}. Non si può annullare.`,
+          "Elimina",
+          true
+        ))
+      )
+        return;
+      const btn = $("#delP");
+      btn.disabled = true;
+      btn.textContent = "Elimino…";
+      await A.deleteProjectFully(p);
+      GB.toast("Progetto e scelte eliminati");
       location.hash = "#/";
     };
   }

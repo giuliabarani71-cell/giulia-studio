@@ -289,9 +289,7 @@
       u.onclick = async () => {
         if (!(await GB.confirm("Eliminare i dati di esempio?", "Cancello solo i clienti e i progetti di esempio. I tuoi dati restano.", "Elimina", true))) return;
         const demoP = (await GB.db.listProjects()).filter((p) => p.demo);
-        const demoN = GB.admin.notif.list.filter((n) => demoP.some((p) => p.id === n.projectId)).map((n) => n.id);
-        if (demoN.length) await GB.db.markNotificationsRead(demoN);
-        for (const p of demoP) await GB.db.deleteProject(p.id);
+        for (const p of demoP) await GB.admin.deleteProjectFully(p);
         for (const c of (await GB.db.listClients()).filter((c) => c.demo)) await GB.db.deleteClient(c.id);
         GB.toast("Dati di esempio eliminati");
         G.page();

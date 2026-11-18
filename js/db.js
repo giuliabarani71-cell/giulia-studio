@@ -172,6 +172,9 @@
         const iv = setInterval(tick, 4000);
         return () => clearInterval(iv);
       },
+      async deleteNotificationsFor(pid) {
+        for (const n of (await all("notifications")).filter((n) => n.projectId === pid)) await del("notifications", n.id);
+      },
       async markNotificationsRead(ids) {
         for (const id of ids) {
           const n = await get("notifications", id);
@@ -493,6 +496,13 @@
               cb(null, e);
             }
           );
+      },
+      async deleteNotificationsFor(pid) {
+        const q = await fs.collection("notifications").where("projectId", "==", pid).get();
+        if (!q.size) return;
+        const b = fs.batch();
+        q.docs.forEach((d) => b.delete(d.ref));
+        await b.commit();
       },
       async markNotificationsRead(ids) {
         const b = fs.batch();
