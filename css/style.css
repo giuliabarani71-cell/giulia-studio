@@ -517,3 +517,28 @@ label > input, label > textarea, label > select, label > .copyrow { margin-top: 
 .view.busy { opacity: 0.45; pointer-events: none; transition: opacity 0.2s 0.15s; }
 .view.busy::before { content: ""; position: fixed; top: 0; left: 0; height: 2px; width: 100%; z-index: 100; background: linear-gradient(90deg, transparent, var(--accent), transparent); background-size: 50% 100%; background-repeat: no-repeat; animation: gbload 1s linear infinite; }
 @keyframes gbload { from { background-position: -50% 0; } to { background-position: 150% 0; } }
+
+/* ---------- Notifiche ---------- */
+.bell-wrap { position: relative; }
+.bell { position: relative; }
+.bell-n { position: absolute; top: -3px; right: -3px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px; background: var(--heart); color: #fff; font-size: 11px; font-weight: 700; line-height: 17px; text-align: center; box-shadow: 0 0 0 2px var(--surface); }
+.notif-panel { position: absolute; right: -8px; top: 44px; width: min(340px, calc(100vw - 24px)); background: var(--surface); border-radius: var(--r); box-shadow: var(--shadow-lg); padding: 10px; z-index: 90; border: 1px solid var(--line-2); }
+.np-head { display: flex; justify-content: space-between; align-items: center; padding: 4px 8px 8px; }
+.np-item { display: flex; gap: 10px; align-items: flex-start; padding: 10px 8px; border-radius: 12px; color: var(--text); text-decoration: none !important; font-size: 14px; line-height: 1.35; }
+.np-item:hover { background: var(--line-2); }
+.np-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex: none; margin-top: 6px; }
+.np-empty { padding: 6px 8px; margin: 0; }
+.notif-panel .btn.wide { margin-top: 8px; }
+
+/* ---------- Temi ---------- */
+.chip.theme { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.theme-desc { margin: -8px 0 12px; min-height: 1em; }
+.newtheme { background: var(--surface-2); border: 1px solid var(--line-2); border-radius: var(--r-sm); padding: 12px 12px 4px; margin-bottom: 14px; }
+.newtheme .btn { margin-bottom: 10px; }
+.theme-cards { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+.tcard { margin: 0; }
+.tcard h3 { margin: 0; }
+.tcard > p { margin: 8px 0; }
+.tfilter { width: auto; margin: -10px 0 18px; font-size: 14px; padding: 7px 34px 7px 12px; border-radius: 10px; }
+.crow .chip { flex: none; }
+@media (max-width: 760px) { .crow .chip.theme { display: none; } .notif-panel { position: fixed; left: 12px; right: 12px; top: 60px; width: auto; } }
