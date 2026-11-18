@@ -33,7 +33,7 @@
           if (parts[2] === "scelte") return await GB.admin.results(parts[1]);
           return await GB.admin.editor(parts[1], parts[2]);
         case "guida":
-          return GB.guide.page();
+          return await GB.guide.page();
         default:
           location.hash = "#/";
       }
@@ -47,7 +47,10 @@
         : offline
         ? "Non riesco a raggiungere Firebase. Controlla la connessione e riprova."
         : GB.esc(e.message || e);
-      GB.$("#view").innerHTML = `<div class="empty"><h2>Qualcosa non ha funzionato</h2><p class="muted">${hint}</p><button class="btn" onclick="GB.route()">Riprova</button></div>`;
+      GB.$("#view").innerHTML = `<div class="empty"><h2>Qualcosa non ha funzionato</h2><p class="muted">${hint}</p><button class="btn" onclick="GB.db.refresh && GB.db.refresh(); GB.route()">Riprova</button></div>`;
+    } finally {
+      const v = GB.$("#view");
+      if (v) v.classList.remove("busy");
     }
   }
   GB.route = route;

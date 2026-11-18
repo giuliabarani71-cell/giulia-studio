@@ -191,7 +191,7 @@
           list
             .map(
               (i) => `<figure class="${sel.has(i.id) ? "sel" : ""}" data-id="${i.id}">
-            <img src="${i.data}" alt="" loading="lazy">
+            <img src="${GB.src(i)}" alt="" loading="lazy" decoding="async">
             <button class="heart" aria-label="♥" data-h="${i.id}">${heart()}</button>
             ${r.comments[i.id] ? `<span class="note-dot" title="${esc(r.comments[i.id])}">✎</span>` : ""}
           </figure>`
@@ -235,12 +235,25 @@
           <button class="lb-close" aria-label="close">×</button>
           <div class="lb-count">${k + 1} / ${list.length}</div>
           <button class="lb-nav prev" ${k === 0 ? "disabled" : ""}>‹</button>
-          <img src="${im.data}" alt="">
+          <img src="${GB.src(im)}" alt="" id="lbImg" class="${im.data ? "" : "soft"}">
           <button class="lb-nav next" ${k === list.length - 1 ? "disabled" : ""}>›</button>
           <div class="lb-bar">
             <button class="heart big ${sel.has(im.id) ? "on" : ""}" id="lbH">${heart()}</button>
             <input id="lbC" placeholder="${t("comment")}" value="${esc(r.comments[im.id] || "")}" maxlength="300">
           </div>`;
+        // la miniatura appare subito, la foto grande la sostituisce appena arriva
+        GB.db.getFull(pid, im).then((full) => {
+          const el = $("#lbImg", lb);
+          if (!el || list[k] !== im) return;
+          const pre = new Image();
+          pre.onload = () => {
+            el.src = full;
+            el.classList.remove("soft");
+          };
+          pre.src = full;
+        });
+        // e intanto prepara la precedente e la successiva
+        [list[k - 1], list[k + 1]].forEach((x) => x && GB.db.getFull(pid, x));
         $(".lb-close", lb).onclick = close;
         $(".prev", lb).onclick = () => k > 0 && (k--, draw());
         $(".next", lb).onclick = () => k < list.length - 1 && (k++, draw());
@@ -380,7 +393,7 @@
             ${pairs.length ? row(t("styleDone"), `${styleDone()}/${pairs.length}`, styleDone() === pairs.length, "style") : ""}
             ${qs.length ? row(t("answers"), `${qDone()}/${qs.length}`, qDone() === qs.length, "questions") : ""}
           </ul>
-          <div class="mini">${chosen.map((i) => `<img src="${i.data}" alt="">`).join("")}</div>
+          <div class="mini">${chosen.map((i) => `<img src="${GB.src(i)}" alt="" decoding="async">`).join("")}</div>
           ${sel.size === 0 ? `<p class="warn small">${t("warnNone")}</p>` : ""}
           <button class="btn primary wide big" id="sendBtn" ${sel.size === 0 ? "disabled" : ""}>${t("send")}</button>
         </div>`;
@@ -414,7 +427,7 @@
         <header class="cl-top"><img src="img/logo.png" class="logo" alt="Giulia Barani"><div class="cl-tools">${GB.theme.button()}</div></header>
         <section class="hero center"><div class="check">✓</div><h1>${t("sent")}</h1><p class="lead">${t("sentText")}</p>
         <p class="small muted">${t("sentOn")} ${GB.fmtDate(r.submittedAt, lang)} · ${chosen.length} ${t("selected")}</p></section>
-        <div class="mini big">${chosen.map((i) => `<img src="${i.data}" alt="">`).join("")}</div>
+        <div class="mini big">${chosen.map((i) => `<img src="${GB.src(i)}" alt="" decoding="async">`).join("")}</div>
         ${footer(t)}</div>`;
     }
 

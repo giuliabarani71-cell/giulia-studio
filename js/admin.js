@@ -81,7 +81,9 @@
       if (lo) lo.onclick = () => GB.db.signOut();
     }
     $$(".nav-links a").forEach((a) => a.classList.toggle("active", a.dataset.nav === active));
-    view().innerHTML = `<div class="loading"><div class="spinner"></div></div>`;
+    // La pagina precedente resta visibile (attenuata) finché la nuova è pronta: niente schermo bianco
+    if (!view().children.length) view().innerHTML = `<div class="loading"><div class="spinner"></div></div>`;
+    else view().classList.add("busy");
   };
 
   A.login = () => {
@@ -320,8 +322,21 @@
       ).join("")}</div>
       <section id="tab"></section>`;
     if (fixCounts) ctx.save(true);
+    if (imgs) A.bgOptimize(id, imgs);
     const fn = { dettagli: tabDetails, foto: tabPhotos, stile: tabStyle, domande: tabQuestions, condividi: tabShare }[tab] || tabDetails;
     await fn(ctx);
+  };
+  // Converte in sottofondo le foto caricate con la versione precedente (senza miniatura separata)
+  const optimizing = new Set();
+  A.bgOptimize = (pid, imgs) => {
+    const old = imgs.some((i) => i.kind === "gallery" && (GB.db.mode === "firebase" ? i.data : !i.thumb));
+    if (!old || optimizing.has(pid) || !GB.db.optimize) return;
+    optimizing.add(pid);
+    GB.db
+      .optimize(pid)
+      .then((n) => n && GB.toast(`${n} foto ottimizzate: d'ora in poi si caricano più in fretta`))
+      .catch((e) => console.warn("Ottimizzazione foto non riuscita", e))
+      .finally(() => optimizing.delete(pid));
   };
   A.pairCount = (imgs) =>
     GB.AXES.filter((ax) => ["a", "b"].every((sd) => imgs.some((i) => i.kind === "style" && i.axis === ax.key && i.side === sd))).length;
@@ -391,7 +406,7 @@
     ctx.p.imageCount = gal.length;
     const c = $("#cntFoto");
     if (c) c.textContent = gal.length;
-    ctx.p.cover = gal[0] ? (await GB.resizeImage(gal[0].data, 420, 0.7)).data : "";
+    ctx.p.cover = gal[0] ? (await GB.resizeImage(GB.src(gal[0]), 420, 0.7)).data : "";
     await ctx.save(true);
   }
 
@@ -414,7 +429,7 @@
         <div class="thumbs" id="thumbs">${gal
           .map(
             (i, k) => `<figure draggable="true" data-id="${i.id}">
-            <img src="${i.data}" alt="" loading="lazy">
+            <img src="${GB.src(i)}" alt="" loading="lazy" decoding="async">
             <figcaption>${k === 0 ? "★ " : ""}${esc(i.name || "")}</figcaption>
             <button class="x" title="Elimina" data-del="${i.id}">×</button></figure>`
           )
@@ -543,7 +558,7 @@
       return GB.modal({
         title,
         wide: true,
-        body: `<div class="pick">${gal.map((i) => `<img src="${i.data}" data-id="${i.id}" loading="lazy">`).join("")}</div>`,
+        body: `<div class="pick">${gal.map((i) => `<img src="${GB.src(i)}" data-id="${i.id}" loading="lazy" decoding="async">`).join("")}</div>`,
         onOpen: (w) =>
           $$(".pick img", w).forEach(
             (im) =>
@@ -554,7 +569,11 @@
           ),
         actions: [
           { label: "Annulla", value: null },
-          { label: "Usa questa", primary: true, onClick: (w) => (w.dataset.choice ? gal.find((g) => g.id === w.dataset.choice).data : false) },
+          {
+            label: "Usa questa",
+            primary: true,
+            onClick: async (w) => (w.dataset.choice ? await GB.db.getFull(p.id, gal.find((g) => g.id === w.dataset.choice)) : false),
+          },
         ],
       });
     };
@@ -852,6 +871,7 @@
     const client = p.clientId ? await GB.db.getClient(p.clientId) : null;
     const st = GB.projectStatus(p, r);
     const gal = imgs.filter((i) => i.kind === "gallery");
+    A.bgOptimize(id, imgs);
     const sel = new Set((r && r.selected) || []);
     const chosen = gal.filter((i) => sel.has(i.id));
     const comments = (r && r.comments) || {};
@@ -904,7 +924,7 @@
       <div class="rgrid">${(showAll ? gal : chosen)
         .map(
           (i) => `<figure class="${sel.has(i.id) ? "sel" : "unsel"}">
-          <img src="${i.data}" alt="" loading="lazy">
+          <img src="${GB.src(i)}" alt="" loading="lazy" decoding="async">
           <figcaption><span class="fname">${sel.has(i.id) ? "♥ " : ""}${esc(i.name || "")}</span>${comments[i.id] ? `<span class="cmt">“${esc(comments[i.id])}”</span>` : ""}</figcaption>
         </figure>`
         )

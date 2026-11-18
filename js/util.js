@@ -531,6 +531,9 @@
     GB.$$(".theme-btn").forEach((b) => (b.textContent = GB.theme.icon()))
   );
 
+  // Sorgente leggera per le griglie: la miniatura se c'è, altrimenti la foto
+  GB.src = (i) => (i && (i.thumb || i.data)) || "";
+
   GB.LANGS = { it: "Italiano", es: "Español", en: "English" };
   GB.STATUS = {
     draft: { label: "Bozza", cls: "gray" },
