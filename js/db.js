@@ -132,6 +132,7 @@
       });
     const P = (id) => fs.collection("projects").doc(id);
     const snap = (d) => (d.exists ? { ...d.data(), id: d.id } : null);
+    const imgCache = new Map();
 
     return {
       mode: "firebase",
@@ -141,6 +142,9 @@
         await Promise.all([loadScript(base + "firebase-auth-compat.js"), loadScript(base + "firebase-firestore-compat.js")]);
         firebase.initializeApp(cfg.firebase);
         fs = firebase.firestore();
+        // Alcune reti (proxy, antivirus, adblock) bloccano lo streaming di Firestore:
+        // il rilevamento automatico passa al long-polling invece di restare appeso.
+        fs.settings({ experimentalAutoDetectLongPolling: true, merge: true });
         auth = firebase.auth();
       },
       onAuth(cb) {
@@ -181,20 +185,41 @@
         batch.delete(P(id).collection("response").doc("main"));
         batch.delete(P(id));
         await batch.commit();
+        imgCache.delete(id);
       },
+      // Le foto pesano centinaia di KB l'una: le teniamo in memoria per tutta la sessione,
+      // così cambiare scheda o pagina non le riscarica ogni volta da Firestore.
       async listImages(pid) {
-        const q = await P(pid).collection("images").get();
-        return q.docs.map(snap).sort(byOrder);
+        if (!imgCache.has(pid)) {
+          const pr = P(pid)
+            .collection("images")
+            .get()
+            .then((q) => q.docs.map(snap));
+          imgCache.set(pid, pr);
+          pr.catch(() => imgCache.delete(pid));
+        }
+        return (await imgCache.get(pid)).map((i) => ({ ...i })).sort(byOrder);
       },
       async addImage(pid, img) {
         const ref = img.id ? P(pid).collection("images").doc(img.id) : P(pid).collection("images").doc();
         const data = clean(img);
         delete data.id;
         await ref.set(data);
+        if (imgCache.has(pid)) {
+          const list = (await imgCache.get(pid)).filter((i) => i.id !== ref.id);
+          list.push({ ...data, id: ref.id });
+          imgCache.set(pid, Promise.resolve(list));
+        }
         return ref.id;
       },
-      updateImage: (pid, iid, patch) => P(pid).collection("images").doc(iid).update(clean(patch)),
-      deleteImage: (pid, iid) => P(pid).collection("images").doc(iid).delete(),
+      async updateImage(pid, iid, patch) {
+        await P(pid).collection("images").doc(iid).update(clean(patch));
+        if (imgCache.has(pid)) imgCache.set(pid, Promise.resolve((await imgCache.get(pid)).map((i) => (i.id === iid ? { ...i, ...patch } : i))));
+      },
+      async deleteImage(pid, iid) {
+        await P(pid).collection("images").doc(iid).delete();
+        if (imgCache.has(pid)) imgCache.set(pid, Promise.resolve((await imgCache.get(pid)).filter((i) => i.id !== iid)));
+      },
       async getResponse(pid) {
         const d = await P(pid).collection("response").doc("main").get();
         return d.exists ? d.data() : null;

@@ -5,7 +5,7 @@
   const C = (GB.client = {});
 
   const screen = (t, title, text, extra = "") => {
-    $("#app").innerHTML = `<div class="cl"><header class="cl-top"><img src="img/logo.png" class="logo" alt="Giulia Barani"></header>
+    $("#app").innerHTML = `<div class="cl"><header class="cl-top"><img src="img/logo.png" class="logo" alt="Giulia Barani"><div class="cl-tools">${GB.theme.button()}</div></header>
       <div class="center-screen"><div class="card narrow center"><h2>${title}</h2><p class="muted">${text}</p>${extra}</div></div>${footer(t)}</div>`;
   };
   const footer = (t) => {
@@ -75,7 +75,7 @@
         ${preview ? `<div class="demo-bar">Anteprima di Giulia: qui le scelte non vengono salvate. ${p.status === "draft" ? "La galleria è ancora in bozza." : ""}</div>` : ""}
         <header class="cl-top">
           <img src="img/logo.png" class="logo" alt="Giulia Barani">
-          <div class="langs">${Object.keys(GB.LANGS).map((k) => `<button data-l="${k}" class="${k === lang ? "on" : ""}">${k.toUpperCase()}</button>`).join("")}</div>
+          <div class="cl-tools">${GB.theme.button()}<div class="langs">${Object.keys(GB.LANGS).map((k) => `<button data-l="${k}" class="${k === lang ? "on" : ""}">${k.toUpperCase()}</button>`).join("")}</div></div>
         </header>
         <section class="hero">
           <p class="eyebrow">${esc(p.title)}</p>
@@ -411,7 +411,7 @@
     function thanks() {
       const chosen = gal.filter((i) => sel.has(i.id));
       $("#app").innerHTML = `<div class="cl">
-        <header class="cl-top"><img src="img/logo.png" class="logo" alt="Giulia Barani"></header>
+        <header class="cl-top"><img src="img/logo.png" class="logo" alt="Giulia Barani"><div class="cl-tools">${GB.theme.button()}</div></header>
         <section class="hero center"><div class="check">✓</div><h1>${t("sent")}</h1><p class="lead">${t("sentText")}</p>
         <p class="small muted">${t("sentOn")} ${GB.fmtDate(r.submittedAt, lang)} · ${chosen.length} ${t("selected")}</p></section>
         <div class="mini big">${chosen.map((i) => `<img src="${i.data}" alt="">`).join("")}</div>

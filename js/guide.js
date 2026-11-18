@@ -242,7 +242,7 @@
           ["Il cliente deve registrarsi?", "No. Riceve un link personale e lo apre dal telefono o dal computer. Chi non ha il link non può vedere la galleria."],
           ["Le scelte si perdono se il cliente chiude la pagina?", "No: ogni cuore, nota e risposta si salva da sola. Quando torna sul link ritrova tutto, finché non preme “Invia”."],
           ["Il cliente ha inviato ma vuole cambiare qualcosa", "Apri la pagina delle scelte e premi “Riapri al cliente”: potrà modificare e inviare di nuovo."],
-          ["Perché bassa risoluzione?", "Le foto servono solo per scegliere: l'app le riduce a 1400 px così si caricano in fretta, restano nel piano gratuito di Firebase e non regali i file in alta qualità."],
+          ["Perché bassa risoluzione?", "Le foto servono solo per scegliere: l'app le riduce a 1280 px così si caricano in fretta, restano nel piano gratuito di Firebase e non regali i file in alta qualità."],
           ["Come trovo le foto scelte in Lightroom?", "Nella pagina delle scelte premi “Copia per Lightroom”, poi in Libreria apri il filtro Testo › Nome file › Contiene e incolla."],
           ["Posso riusare le stesse coppie di stile?", "Sì: nella scheda Stile usa “Copia da un altro progetto”."],
           ["In che lingua vede la galleria il cliente?", "In quella scelta nel progetto (italiano, spagnolo o inglese), ma può cambiarla dai pulsanti in alto."],

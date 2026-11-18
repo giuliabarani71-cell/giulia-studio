@@ -67,6 +67,7 @@
             <a data-nav="guida" href="#/guida" data-tour="nav-guide">Guida</a>
           </nav>
           <div class="nav-right">
+            ${GB.theme.button()}
             ${demo ? `<span class="pill" title="I dati restano in questo browser">Demo</span>` : `<button class="btn ghost small" id="logout">Esci</button>`}
           </div>
         </div></header>
@@ -84,7 +85,7 @@
   };
 
   A.login = () => {
-    $("#app").innerHTML = `<div class="center-screen login">
+    $("#app").innerHTML = `<div class="login-theme">${GB.theme.button()}</div><div class="center-screen login">
       <form class="card narrow" id="loginForm">
         <img src="img/logo.png" class="logo big" alt="Giulia Barani">
         <h2>Accedi allo studio</h2>
@@ -276,10 +277,22 @@
   ];
 
   A.editor = async (id, tab = "dettagli") => {
-    const [p, imgs, r] = await Promise.all([GB.db.getProject(id), GB.db.listImages(id), GB.db.getResponse(id)]);
+    // Le foto si scaricano solo nelle schede che le mostrano: le altre usano i contatori salvati nel progetto
+    const needImgs = tab === "foto" || tab === "stile";
+    const [p, imgs, r] = await Promise.all([GB.db.getProject(id), needImgs ? GB.db.listImages(id) : Promise.resolve(null), GB.db.getResponse(id)]);
     if (!p) return (view().innerHTML = `<div class="empty"><h2>Progetto non trovato</h2><a href="#/" class="btn">Torna ai progetti</a></div>`);
     const st = GB.projectStatus(p, r);
-    const ctx = { p, imgs, r, st, save: null };
+    const ctx = { p, imgs: imgs || [], r, st, save: null };
+    let fixCounts = false;
+    if (imgs) {
+      const nGal = imgs.filter((i) => i.kind === "gallery").length,
+        nPairs = A.pairCount(imgs);
+      if (p.imageCount !== nGal || p.stylePairs !== nPairs) {
+        p.imageCount = nGal;
+        p.stylePairs = nPairs;
+        fixCounts = true;
+      }
+    }
     let saveT;
     ctx.save = async (quiet) => {
       clearTimeout(saveT);
@@ -302,13 +315,16 @@
       </div>
       <div class="seg tabs" data-tour="editor-tabs">${TABS.map(
         ([k, l]) => `<a href="#/progetto/${p.id}/${k}" class="${k === tab ? "on" : ""}">${l}${
-          k === "foto" ? ` <span class="cnt">${imgs.filter((i) => i.kind === "gallery").length}</span>` : ""
-        }${k === "stile" ? ` <span class="cnt">${imgs.filter((i) => i.kind === "style").length / 2 | 0}/4</span>` : ""}</a>`
+          k === "foto" ? ` <span class="cnt" id="cntFoto">${p.imageCount || 0}</span>` : ""
+        }${k === "stile" ? ` <span class="cnt" id="cntStile">${p.stylePairs == null ? "–" : p.stylePairs}/4</span>` : ""}</a>`
       ).join("")}</div>
       <section id="tab"></section>`;
+    if (fixCounts) ctx.save(true);
     const fn = { dettagli: tabDetails, foto: tabPhotos, stile: tabStyle, domande: tabQuestions, condividi: tabShare }[tab] || tabDetails;
     await fn(ctx);
   };
+  A.pairCount = (imgs) =>
+    GB.AXES.filter((ax) => ["a", "b"].every((sd) => imgs.some((i) => i.kind === "style" && i.axis === ax.key && i.side === sd))).length;
 
   async function tabDetails(ctx) {
     const { p } = ctx;
@@ -373,6 +389,8 @@
   async function updateCover(ctx) {
     const gal = ctx.imgs.filter((i) => i.kind === "gallery");
     ctx.p.imageCount = gal.length;
+    const c = $("#cntFoto");
+    if (c) c.textContent = gal.length;
     ctx.p.cover = gal[0] ? (await GB.resizeImage(gal[0].data, 420, 0.7)).data : "";
     await ctx.save(true);
   }
@@ -387,7 +405,7 @@
           <input type="file" accept="image/*" multiple hidden id="fileIn">
           <div class="drop-icon">↑</div>
           <strong>Trascina qui le foto o clicca per sceglierle</strong>
-          <span class="small muted">Consigliate 20–30 foto. Vengono ridotte in automatico a bassa risoluzione (lato lungo 1400 px).</span>
+          <span class="small muted">Consigliate 20–30 foto. Vengono ridotte in automatico a bassa risoluzione (lato lungo 1280 px).</span>
           <div class="progress" id="prog" hidden><div></div></div>
         </label>
         <div class="row between">
@@ -466,21 +484,31 @@
       if (!files.length) return;
       const prog = $("#prog");
       prog.hidden = false;
-      let order = ctx.imgs.filter((i) => i.kind === "gallery").length;
-      for (let k = 0; k < files.length; k++) {
-        try {
-          const { data, w, h } = await GB.resizeImage(files[k]);
-          const img = { kind: "gallery", name: files[k].name, data, w, h, order: order++ };
-          img.id = await GB.db.addImage(p.id, img);
-          ctx.imgs.push(img);
-        } catch (e) {
-          console.error(e);
-          GB.toast("Non riesco a leggere " + files[k].name, "err");
+      const start = ctx.imgs.filter((i) => i.kind === "gallery").length;
+      let next = 0,
+        done = 0,
+        ok = 0;
+      // 3 caricamenti in parallelo: molto più veloce che uno alla volta, senza intasare la rete
+      const worker = async () => {
+        while (next < files.length) {
+          const k = next++;
+          try {
+            const { data, w, h } = await GB.resizeImage(files[k]);
+            const img = { kind: "gallery", name: files[k].name, data, w, h, order: start + k };
+            img.id = await GB.db.addImage(p.id, img);
+            ctx.imgs.push(img);
+            ok++;
+          } catch (e) {
+            console.error(e);
+            GB.toast("Non riesco a caricare " + files[k].name, "err");
+          }
+          prog.firstElementChild.style.width = (++done / files.length) * 100 + "%";
         }
-        prog.firstElementChild.style.width = ((k + 1) / files.length) * 100 + "%";
-      }
+      };
+      await Promise.all([worker(), worker(), worker()]);
+      ctx.imgs.sort((a, b) => (a.order || 0) - (b.order || 0));
       await updateCover(ctx);
-      GB.toast(files.length + " foto caricate");
+      GB.toast(ok + " foto caricate");
       A.editor(p.id, "foto");
     };
     render();
@@ -496,6 +524,10 @@
       const img = { id, kind: "style", axis, side, data, order: 1000 };
       await GB.db.addImage(p.id, img);
       ctx.imgs = ctx.imgs.filter((i) => i.id !== id).concat(img);
+      p.stylePairs = A.pairCount(ctx.imgs);
+      const c = $("#cntStile");
+      if (c) c.textContent = p.stylePairs + "/4";
+      ctx.saveSoon();
     };
     const genPair = async (axis, src) => {
       const base = (await GB.resizeImage(src, 1000, 0.85)).data;
@@ -717,11 +749,16 @@
   }
 
   async function tabShare(ctx) {
-    const { p, imgs, r } = ctx;
+    const { p, r } = ctx;
     const client = p.clientId ? await GB.db.getClient(p.clientId) : null;
     const link = GB.galleryLink(p.id);
-    const gal = imgs.filter((i) => i.kind === "gallery").length;
-    const pairs = GB.AXES.filter((ax) => imgs.some((i) => i.kind === "style" && i.axis === ax.key && i.side === "a") && imgs.some((i) => i.kind === "style" && i.axis === ax.key && i.side === "b")).length;
+    let gal = p.imageCount || 0,
+      pairs = p.stylePairs;
+    if (pairs == null) {
+      const imgs = await GB.db.listImages(p.id);
+      gal = imgs.filter((i) => i.kind === "gallery").length;
+      pairs = A.pairCount(imgs);
+    }
     const first = (p.clientName || "").split(/\s/)[0];
     const msgs = {
       it: `Ciao ${first}! Le foto del tuo servizio sono pronte per la scelta 📸\nApri questo link, scegli le tue preferite e dimmi che stile ti piace:\n${link}\n\nGiulia`,

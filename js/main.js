@@ -39,7 +39,15 @@
       }
     } catch (e) {
       console.error(e);
-      GB.$("#view").innerHTML = `<div class="empty"><h2>Qualcosa non ha funzionato</h2><p class="muted">${GB.esc(e.message || e)}</p></div>`;
+      const denied = e && e.code === "permission-denied";
+      const offline = e && (e.code === "unavailable" || /offline/i.test(e.message || ""));
+      const who = (GB.state.user && GB.state.user.email) || "";
+      const hint = denied
+        ? `Firestore ha rifiutato l'accesso. Controlla in Firebase › Firestore › Regole che l'email scritta sia esattamente <b>${GB.esc(who)}</b> e premi Pubblica.`
+        : offline
+        ? "Non riesco a raggiungere Firebase. Controlla la connessione e riprova."
+        : GB.esc(e.message || e);
+      GB.$("#view").innerHTML = `<div class="empty"><h2>Qualcosa non ha funzionato</h2><p class="muted">${hint}</p><button class="btn" onclick="GB.route()">Riprova</button></div>`;
     }
   }
   GB.route = route;

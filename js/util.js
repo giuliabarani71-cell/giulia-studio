@@ -112,8 +112,8 @@
     });
 
   // Ridimensiona un File (o un'immagine) a bassa risoluzione e restituisce un dataURL JPEG.
-  // Firestore accetta documenti fino a 1 MB: restiamo ben sotto i 700 KB.
-  GB.resizeImage = async (src, max = 1400, q = 0.72) => {
+  // Firestore accetta documenti fino a 1 MB: restiamo sotto i ~420 KB per caricare in fretta.
+  GB.resizeImage = async (src, max = 1280, q = 0.72) => {
     let img;
     if (src instanceof Blob) {
       const url = URL.createObjectURL(src);
@@ -134,7 +134,7 @@
     c.height = h;
     c.getContext("2d").drawImage(img, 0, 0, w, h);
     let data = c.toDataURL("image/jpeg", q);
-    while (data.length > 700000 && q > 0.35) {
+    while (data.length > 420000 && q > 0.4) {
       q -= 0.1;
       data = c.toDataURL("image/jpeg", q);
     }
@@ -500,6 +500,36 @@
     if (vars) for (const v in vars) s = s.replace("{" + v + "}", vars[v]);
     return s;
   };
+
+  /* ---------- Tema chiaro / scuro ---------- */
+  // Senza scelta segue il sistema; il pulsante forza chiaro o scuro e lo ricorda in questo browser.
+  GB.theme = {
+    get() {
+      try {
+        return localStorage.getItem("gb-theme");
+      } catch (e) {
+        return null;
+      }
+    },
+    isDark() {
+      const t = GB.theme.get();
+      return t ? t === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
+    },
+    icon: () => (GB.theme.isDark() ? "☀︎" : "☾"),
+    toggle() {
+      const next = GB.theme.isDark() ? "light" : "dark";
+      try {
+        localStorage.setItem("gb-theme", next);
+      } catch (e) {}
+      document.documentElement.dataset.theme = next;
+      GB.$$(".theme-btn").forEach((b) => (b.textContent = GB.theme.icon()));
+    },
+    button: () =>
+      `<button type="button" class="theme-btn" aria-label="Modalità chiara / scura" title="Modalità chiara / scura" onclick="GB.theme.toggle()">${GB.theme.icon()}</button>`,
+  };
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () =>
+    GB.$$(".theme-btn").forEach((b) => (b.textContent = GB.theme.icon()))
+  );
 
   GB.LANGS = { it: "Italiano", es: "Español", en: "English" };
   GB.STATUS = {
