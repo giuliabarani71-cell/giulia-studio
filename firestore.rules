@@ -1,0 +1,46 @@
+rules_version = '2';
+
+// Regole di sicurezza per Giulia Barani · Studio
+// Sostituisci EMAIL_DI_GIULIA con l'email usata per il login (la stessa di js/config.js → adminEmail)
+// e incolla tutto in Firebase Console → Firestore Database → Regole → Pubblica.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.token.email == 'giuliabarani71@gmail.com';
+    }
+
+    // Profili dei clienti: solo Giulia
+    match /clients/{clientId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /projects/{projectId} {
+      // Chi ha il link (ID casuale di 20 caratteri) può leggere il singolo progetto,
+      // ma non può elencare tutti i progetti.
+      allow get: if true;
+      allow list, create, update, delete: if isAdmin();
+
+      // Foto a bassa risoluzione e coppie di stile
+      match /images/{imageId} {
+        allow read: if true;
+        allow write: if isAdmin();
+      }
+
+      // Scelte del cliente
+      match /response/{docId} {
+        allow read: if true;
+        allow write: if isAdmin();
+        allow create, update: if docId == 'main'
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.status == 'open'
+          && (resource == null || resource.data.status != 'submitted')
+          && request.resource.data.keys().hasOnly(['status', 'selected', 'comments', 'style', 'answers', 'updatedAt', 'submittedAt'])
+          && request.resource.data.status in ['draft', 'submitted']
+          && request.resource.data.selected is list
+          && request.resource.data.selected.size() <= 300;
+      }
+    }
+  }
+}
