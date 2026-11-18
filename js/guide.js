@@ -308,8 +308,10 @@
       tRitratto = th("Ritratto");
     const c1 = await GB.db.saveClient({
       name: "María y Luis Pérez",
+      type: "privato",
+      origin: "Madrid, Spagna",
       email: "maria.perez@example.com",
-      phone: "",
+      phone: "+34 600 000 000",
       lang: "es",
       prefs: {},
       notes: "",
@@ -334,6 +336,8 @@
       maxSelections: 12,
       message: "",
       status: "open",
+      createdAt: Date.now() - 7 * 864e5,
+      openedAt: Date.now() - 2 * 864e5,
       shootDate: new Date(Date.now() - 6 * 864e5).toISOString().slice(0, 10),
       questions: GB.defaultQuestions("es"),
       pairLabels: {},

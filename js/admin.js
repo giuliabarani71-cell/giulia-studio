@@ -52,6 +52,93 @@
     return chips.length ? chips.join("") : `<span class="muted small">Nessuna preferenza marcata</span>`;
   };
 
+  /* ---------- Date del progetto: apertura, scelte, chiusura ---------- */
+  // Cambia stato registrando le date: apertura = prima volta che la galleria è aperta al cliente
+  A.setStatus = (p, s) => {
+    p.status = s;
+    if (s === "open" && !p.openedAt) p.openedAt = Date.now();
+    if (s === "closed") p.closedAt = Date.now();
+    else delete p.closedAt;
+  };
+  // Linea del tempo: creato → aperto → scelte inviate → chiuso
+  ui.timeline = (p, r, compact = false) => {
+    const steps = [
+      ["Creato", p.createdAt],
+      ["Aperto al cliente", p.openedAt],
+      ["Scelte inviate", r && r.status === "submitted" ? r.submittedAt : null],
+      ["Chiuso", p.status === "closed" ? p.closedAt : null],
+    ];
+    if (compact)
+      return `<span class="small muted dates">${steps
+        .slice(1)
+        .filter(([, t]) => t)
+        .map(([l, t]) => `${l.replace(" al cliente", "")} ${GB.fmtDate(t)}`)
+        .join(" · ")}</span>`;
+    return `<ol class="timeline" data-tour="timeline">${steps
+      .map(([l, t]) => `<li class="${t ? "done" : ""}"><span class="tl-dot"></span><span class="tl-l">${l}</span><span class="tl-d">${t ? GB.fmtDateTime(t) : "—"}</span></li>`)
+      .join("")}</ol>`;
+  };
+
+  /* ---------- Campi del cliente: tipo, nome, contatti, provenienza ---------- */
+  GB.CLIENT_TYPES = { privato: "Privato", azienda: "Azienda" };
+  ui.clientFields = (c = {}, prefix = "") => {
+    const type = c.type || "privato";
+    return `
+      <div class="seg small type-seg" data-type-seg>
+        ${Object.entries(GB.CLIENT_TYPES)
+          .map(([k, l]) => `<button type="button" data-t="${k}" class="${k === type ? "on" : ""}">${l}</button>`)
+          .join("")}
+      </div>
+      <input type="hidden" name="${prefix}type" value="${type}">
+      <label><span data-name-label>${type === "azienda" ? "Nome dell'azienda" : "Nome e cognome"}</span><input name="${prefix}name" value="${esc(
+      c.name || ""
+    )}" placeholder="${type === "azienda" ? "es. Hotel Playa Bonita" : "es. Maria e Luis Pérez"}"></label>
+      <label data-only-azienda ${type === "azienda" ? "" : "hidden"}>Referente<input name="${prefix}contact" value="${esc(c.contact || "")}" placeholder="es. Carmen Díaz, marketing"></label>
+      <div class="two">
+        <label>Telefono / WhatsApp<input name="${prefix}phone" type="tel" value="${esc(c.phone || "")}" placeholder="+1 809 555 1234"></label>
+        <label>Email<input name="${prefix}email" type="email" value="${esc(c.email || "")}" placeholder="facoltativa"></label>
+      </div>
+      <label>Provenienza<input name="${prefix}origin" value="${esc(c.origin || "")}" placeholder="es. Madrid, Spagna"></label>`;
+  };
+  ui.bindClientFields = (root, prefix = "") => {
+    $$("[data-type-seg] button", root).forEach(
+      (b) =>
+        (b.onclick = () => {
+          $$("[data-type-seg] button", root).forEach((x) => x.classList.toggle("on", x === b));
+          root.querySelector(`[name=${prefix}type]`).value = b.dataset.t;
+          const az = b.dataset.t === "azienda";
+          $("[data-name-label]", root).textContent = az ? "Nome dell'azienda" : "Nome e cognome";
+          root.querySelector(`[name=${prefix}name]`).placeholder = az ? "es. Hotel Playa Bonita" : "es. Maria e Luis Pérez";
+          $("[data-only-azienda]", root).hidden = !az;
+        })
+    );
+  };
+  ui.readClientFields = (f, prefix = "") => {
+    const v = (n) => (f.querySelector(`[name=${prefix}${n}]`) || {}).value || "";
+    const type = v("type") || "privato";
+    return {
+      type,
+      name: v("name").trim(),
+      contact: type === "azienda" ? v("contact").trim() : "",
+      phone: v("phone").trim(),
+      email: v("email").trim(),
+      origin: v("origin").trim(),
+    };
+  };
+  ui.typeChip = (c) => (c && c.type === "azienda" ? `<span class="chip azienda">Azienda</span>` : `<span class="chip privato">Privato</span>`);
+  // contatti cliccabili: chiamata, WhatsApp, email
+  ui.contactLinks = (c) => {
+    const tel = (c.phone || "").replace(/[^\d+]/g, "");
+    const wa = tel.replace(/\D/g, "");
+    return [
+      c.phone ? `<a href="tel:${esc(tel)}">📞 ${esc(c.phone)}</a> · <a href="https://wa.me/${wa}" target="_blank">WhatsApp</a>` : "",
+      c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : "",
+      c.origin ? `📍 ${esc(c.origin)}` : "",
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  };
+
   /* ---------- Shell e login ---------- */
   A.shell = (active) => {
     const map = { cliente: "clienti", progetto: "progetti" };
@@ -198,9 +285,10 @@
               <div class="row tight">${ui.badge(p._st)}${ui.themeChip(p)}</div>
               <h3>${esc(p.title)}</h3>
               <p class="muted">${esc(p.clientName || "—")}</p>
-              <p class="small muted">${p.imageCount || 0} foto${p._r && p._r.selected ? ` · ${p._r.selected.length} scelte` : ""} · ${GB.fmtDate(
+              <p class="small muted">${p.imageCount || 0} foto${p._r && p._r.selected ? ` · ${p._r.selected.length} scelte` : ""} · creato ${GB.fmtDate(
               p.createdAt
             )}</p>
+              ${ui.timeline(p, p._r, true)}
             </div></a>`
           )
           .join("") || `<p class="muted">Nessun progetto in questo filtro.</p>`}</div>`
@@ -239,10 +327,7 @@
           <option value="__new">＋ Nuovo cliente…</option>
           ${clients.map((c) => `<option value="${c.id}" ${c.id === presetClientId ? "selected" : ""}>${esc(c.name)}</option>`).join("")}
         </select></label>
-        <div class="newc">
-          <label>Nome del nuovo cliente<input name="cname" placeholder="es. Maria e Luis"></label>
-          <label>Email<input name="cemail" type="email" placeholder="facoltativa"></label>
-        </div>
+        <div class="newc">${ui.clientFields({}, "c_")}</div>
         <div class="two">
           <label>Lingua della galleria<select name="lang">${Object.entries(GB.LANGS)
             .map(([k, v]) => `<option value="${k}" ${k === "es" ? "selected" : ""}>${v}</option>`)
@@ -262,6 +347,7 @@
         if (!clients.length || !presetClientId) f.client.value = presetClientId || "__new";
         sync();
         ui.bindThemePicker($(".theme-pick", w), themes);
+        ui.bindClientFields($(".newc", w), "c_");
       },
       actions: [
         { label: "Annulla", value: null },
@@ -275,8 +361,9 @@
             if (!theme) return false;
             let client;
             if (f.client.value === "__new") {
-              if (!f.cname.value.trim()) return f.cname.focus(), false;
-              client = await GB.db.saveClient({ name: f.cname.value.trim(), email: f.cemail.value.trim(), lang: f.lang.value, prefs: {} });
+              const nc = ui.readClientFields(f, "c_");
+              if (!nc.name) return f.querySelector("[name=c_name]").focus(), false;
+              client = await GB.db.saveClient({ ...nc, lang: f.lang.value, prefs: {} });
             } else client = clients.find((c) => c.id === f.client.value);
             const p = await GB.db.saveProject({
               title: f.title.value.trim(),
@@ -347,6 +434,7 @@
           ${r ? `<a class="btn ${st === "submitted" ? "primary" : ""}" href="#/progetto/${p.id}/scelte" data-tour="see-results">Vedi scelte</a>` : ""}
         </div>
       </div>
+      ${ui.timeline(p, r)}
       <div class="seg tabs" data-tour="editor-tabs">${TABS.map(
         ([k, l]) => `<a href="#/progetto/${p.id}/${k}" class="${k === tab ? "on" : ""}">${l}${
           k === "foto" ? ` <span class="cnt" id="cntFoto">${p.imageCount || 0}</span>` : ""
@@ -945,7 +1033,7 @@
     $$("#stSeg button").forEach(
       (b) =>
         (b.onclick = async () => {
-          p.status = b.dataset.s;
+          A.setStatus(p, b.dataset.s);
           await ctx.save();
           GB.toast(p.status === "open" ? "Galleria aperta al cliente" : p.status === "closed" ? "Galleria chiusa" : "Galleria in bozza");
           A.editor(p.id, "condividi");
@@ -982,6 +1070,16 @@
     const lrText = chosen.map((i) => baseName(i.name)).join(" ");
     const csvText = chosen.map((i) => i.name).join(", ");
     const style = (r && r.style) || {};
+    // Traduzione per Giulia: salvata nel progetto (p.translations) per non rifarla ogni volta
+    const needTr = r && p.lang && p.lang !== "it";
+    const tr = needTr ? p.translations : null;
+    const trStale = !!(tr && r && tr.srcAt && r.updatedAt && r.updatedAt > tr.srcAt);
+    const trLine = (it, orig) =>
+      it
+        ? `<span class="tr">🇮🇹 ${esc(it)}</span>`
+        : orig
+        ? `<a class="tr small" href="${GB.googleTranslateLink(orig, p.lang)}" target="_blank" rel="noopener">Traduci con Google ↗</a>`
+        : "";
     const styleImg = (axis, v) => {
       if (v == null || v === 0) return "";
       const im = imgs.find((i) => i.kind === "style" && i.axis === axis && i.side === (v < 0 ? "a" : "b"));
@@ -999,6 +1097,7 @@
           ${p.status !== "closed" ? `<button class="btn ghost" id="close">Segna come concluso</button>` : `<button class="btn ghost" id="reactivate">Riattiva</button>`}
         </div>
       </div>
+      ${ui.timeline(p, r)}
       ${
         !r
           ? `<div class="empty card"><h2>Ancora nessuna scelta</h2><p class="muted">Quando ${esc(
@@ -1027,7 +1126,7 @@
         .map(
           (i) => `<figure class="${sel.has(i.id) ? "sel" : "unsel"}">
           <img src="${GB.src(i)}" alt="" loading="lazy" decoding="async">
-          <figcaption><span class="fname">${sel.has(i.id) ? "♥ " : ""}${esc(i.name || "")}</span>${comments[i.id] ? `<span class="cmt">“${esc(comments[i.id])}”</span>` : ""}</figcaption>
+          <figcaption><span class="fname">${sel.has(i.id) ? "♥ " : ""}${esc(i.name || "")}</span>${comments[i.id] ? `<span class="cmt">“${esc(comments[i.id])}”</span>${tr && tr.c ? trLine(tr.c[i.id], comments[i.id]) : ""}` : ""}</figcaption>
         </figure>`
         )
         .join("") || `<p class="muted">Nessuna foto selezionata.</p>`}</div>
@@ -1039,12 +1138,19 @@
           <div class="style-thumbs">${GB.AXES.map((ax) => styleImg(ax.key, style[ax.key])).join("")}</div>
         </div>
         <div class="card">
-          <h3>Risposte</h3>
+          <div class="row between"><h3>Risposte</h3>${
+            needTr
+              ? `<button class="btn small" id="trBtn" data-tour="translate">🇮🇹 ${tr ? "Aggiorna traduzione" : "Traduci in italiano"}</button>`
+              : ""
+          }</div>
+          ${trStale ? `<p class="small warn">Il cliente ha cambiato le risposte dopo la traduzione: aggiornala.</p>` : ""}
           <dl class="answers">${(p.questions || [])
             .map((q) => {
               let a = (r.answers || {})[q.id];
               if (Array.isArray(a)) a = a.join(", ");
-              return `<dt>${esc(q.text)}</dt><dd>${a ? esc(a) : `<span class="muted">—</span>`}</dd>`;
+              const t = tr && tr.q && tr.q[q.id];
+              return `<dt>${esc(q.text)}${t && t.q && t.q !== q.text ? `<span class="tr-q">${esc(t.q)}</span>` : ""}</dt>
+                <dd>${a ? esc(a) : `<span class="muted">—</span>`}${a && t ? trLine(t.a, a) : ""}</dd>`;
             })
             .join("")}</dl>
         </div>
@@ -1078,21 +1184,66 @@
       delete r.submittedAt;
       await GB.db.saveResponse(id, r);
       if (p.status !== "open") {
-        p.status = "open";
+        A.setStatus(p, "open");
         await GB.db.saveProject(p);
       }
       GB.toast("Galleria riaperta");
       A.results(id);
     });
     on("#close", async () => {
-      p.status = "closed";
+      A.setStatus(p, "closed");
       await GB.db.saveProject(p);
       GB.toast("Progetto concluso");
       A.results(id);
     });
     on("#reactivate", async () => {
-      p.status = "open";
+      A.setStatus(p, "open");
       await GB.db.saveProject(p);
+      A.results(id);
+    });
+    on("#trBtn", async () => {
+      const btn = $("#trBtn");
+      btn.disabled = true;
+      btn.textContent = "Traduco…";
+      const T = await GB.translator(p.lang); // va creato subito, dentro il clic
+      const t = async (text) => {
+        if (!text || !T) return null;
+        try {
+          return await T.translate(text);
+        } catch (e) {
+          return null;
+        }
+      };
+      const out = { q: {}, c: {}, srcAt: r.updatedAt || Date.now(), at: Date.now(), engine: T ? "chrome" : "predefinite" };
+      let missing = 0;
+      for (const q of p.questions || []) {
+        const m = GB.defaultMatch(q, p.lang);
+        const raw = (r.answers || {})[q.id];
+        const vals = Array.isArray(raw) ? raw : raw ? [raw] : [];
+        let aIt = null;
+        if (vals.length) {
+          if (q.type !== "text" && m) {
+            const mapped = vals.map((v) => GB.mapOption(m, q, v));
+            aIt = mapped.every(Boolean) ? mapped.join(", ") : await t(vals.join(", "));
+          } else aIt = await t(vals.join(", "));
+          if (!aIt) missing++;
+        }
+        out.q[q.id] = { q: m ? m.it.text : (await t(q.text)) || "", a: aIt };
+      }
+      for (const [iid, txt] of Object.entries(comments)) {
+        if (!txt) continue;
+        out.c[iid] = await t(txt);
+        if (!out.c[iid]) missing++;
+      }
+      p.translations = out;
+      await GB.db.saveProject(p);
+      GB.toast(
+        missing
+          ? T
+            ? "Tradotto, tranne alcuni testi: usa i link a Google"
+            : "Domande tradotte. Per i testi liberi il traduttore di Chrome non è disponibile: usa i link a Google"
+          : "Risposte tradotte in italiano"
+      );
       A.results(id);
     });
     on("#toProfile", async () => {
@@ -1113,7 +1264,10 @@
         themeName: p.themeName || "",
         date: r.submittedAt || r.updatedAt || Date.now(),
         style,
-        answers: (p.questions || []).map((q) => ({ q: q.text, a: Array.isArray((r.answers || {})[q.id]) ? r.answers[q.id].join(", ") : (r.answers || {})[q.id] || "" })),
+        answers: (p.questions || []).map((q) => {
+          const t = (tr && tr.q && tr.q[q.id]) || {};
+          return { q: q.text, a: Array.isArray((r.answers || {})[q.id]) ? r.answers[q.id].join(", ") : (r.answers || {})[q.id] || "", qIt: t.q || "", aIt: t.a || "" };
+        }),
         selected: chosen.length,
       });
       await GB.db.saveClient(client);
@@ -1125,14 +1279,13 @@
   A.clientForm = async (c = {}) =>
     GB.modal({
       title: c.id ? "Modifica cliente" : "Nuovo cliente",
-      body: `<form class="form" id="cf">
-        <label>Nome<input name="name" value="${esc(c.name || "")}" placeholder="es. Maria e Luis Pérez" required></label>
-        <div class="two"><label>Email<input name="email" type="email" value="${esc(c.email || "")}"></label>
-        <label>Telefono / WhatsApp<input name="phone" value="${esc(c.phone || "")}" placeholder="+1 809…"></label></div>
+      body: `<form class="form" id="cf" onsubmit="return false">
+        ${ui.clientFields(c)}
         <label>Lingua<select name="lang">${Object.entries(GB.LANGS)
           .map(([k, v]) => `<option value="${k}" ${k === (c.lang || "es") ? "selected" : ""}>${v}</option>`)
           .join("")}</select></label>
       </form>`,
+      onOpen: (w) => ui.bindClientFields($("#cf", w)),
       actions: [
         { label: "Annulla", value: null },
         {
@@ -1141,7 +1294,7 @@
           onClick: async (w) => {
             const f = $("#cf", w);
             if (!f.name.value.trim()) return f.name.focus(), false;
-            Object.assign(c, { name: f.name.value.trim(), email: f.email.value.trim(), phone: f.phone.value.trim(), lang: f.lang.value });
+            Object.assign(c, ui.readClientFields(f), { lang: f.lang.value });
             c.prefs = c.prefs || {};
             return GB.db.saveClient(c);
           },
@@ -1155,24 +1308,43 @@
     view().innerHTML = `
       <div class="page-head"><div><p class="eyebrow">${clients.length} clienti</p><h1>Clienti</h1></div>
         <button class="btn primary" id="newC" data-tour="new-client">＋ Nuovo cliente</button></div>
-      <input type="search" class="search" id="cq" placeholder="Cerca per nome, email o telefono" value="${esc(q)}">
+      <div class="row between">
+        <div class="seg small" id="ctype">${[["", "Tutti"], ["privato", "Privati"], ["azienda", "Aziende"]]
+          .map(([k, l]) => `<button data-t="${k}" class="${(sessionStorage.getItem("gb-ctype") || "") === k ? "on" : ""}">${l}</button>`)
+          .join("")}</div>
+      </div>
+      <input type="search" class="search" id="cq" placeholder="Cerca per nome, telefono, email o provenienza" value="${esc(q)}">
       <div class="clist" id="clist"></div>`;
     const draw = () => {
       const s = $("#cq").value.toLowerCase();
       sessionStorage.setItem("gb-cq", $("#cq").value);
-      const list = clients.filter((c) => [c.name, c.email, c.phone].join(" ").toLowerCase().includes(s));
+      const ct = sessionStorage.getItem("gb-ctype") || "";
+      const list = clients.filter(
+        (c) => [c.name, c.email, c.phone, c.origin, c.contact].join(" ").toLowerCase().includes(s) && (!ct || (c.type || "privato") === ct)
+      );
       $("#clist").innerHTML =
         list
           .map((c) => {
             const n = projects.filter((p) => p.clientId === c.id).length;
             return `<a class="crow" href="#/cliente/${c.id}">
             <span class="avatar">${ui.initials(c.name)}</span>
-            <span class="cmain"><strong>${esc(c.name)}</strong><span class="small muted">${esc([c.email, c.phone].filter(Boolean).join(" · ") || "—")}</span></span>
+            <span class="cmain"><strong>${esc(c.name)}</strong><span class="small muted">${esc(
+              [c.phone, c.origin, c.email].filter(Boolean).join(" · ") || "—"
+            )}</span></span>
+            ${ui.typeChip(c)}
             <span class="chips">${ui.prefChips(c.prefs)}</span>
             <span class="small muted nowrap">${n} progett${n === 1 ? "o" : "i"} ›</span></a>`;
           })
           .join("") || `<div class="empty"><p class="muted">${clients.length ? "Nessun risultato." : "Nessun cliente. Creane uno, o crea un progetto: il cliente si aggiunge da lì."}</p></div>`;
     };
+    $$("#ctype button").forEach(
+      (b) =>
+        (b.onclick = () => {
+          sessionStorage.setItem("gb-ctype", b.dataset.t);
+          $$("#ctype button").forEach((x) => x.classList.toggle("on", x === b));
+          draw();
+        })
+    );
     $("#cq").oninput = draw;
     draw();
     $("#newC").onclick = async () => {
@@ -1200,7 +1372,9 @@
       <a href="#/clienti" class="back">‹ Clienti</a>
       <div class="page-head profile-head">
         <div class="row"><span class="avatar big">${ui.initials(c.name)}</span>
-          <div><h1>${esc(c.name)}</h1><p class="muted">${esc([c.email, c.phone].filter(Boolean).join(" · ") || "Nessun contatto")} · ${GB.LANGS[c.lang || "es"]}</p></div></div>
+          <div><div class="row tight">${ui.typeChip(c)}<span class="small muted">${GB.LANGS[c.lang || "es"]}</span></div><h1>${esc(c.name)}</h1>
+          ${c.type === "azienda" && c.contact ? `<p class="muted">Referente: ${esc(c.contact)}</p>` : ""}
+          <p class="contacts">${ui.contactLinks(c) || `<span class="muted">Nessun contatto: aggiungili con “Modifica dati”</span>`}</p></div></div>
         <div class="row"><span class="small muted" id="cSave"></span><button class="btn ghost" id="editC">Modifica dati</button><button class="btn" id="newPC">＋ Progetto</button></div>
       </div>
       <div class="two-col">
@@ -1243,9 +1417,9 @@
             const st = GB.projectStatus(p, resp[k]);
             return `<a class="crow" href="#/progetto/${p.id}${st === "submitted" ? "/scelte" : ""}">
             <span class="thumb">${p.cover ? `<img src="${p.cover}" alt="">` : ""}</span>
-            <span class="cmain"><strong>${esc(p.title)}</strong><span class="small muted">${GB.fmtDate(p.createdAt)} · ${p.imageCount || 0} foto${
+            <span class="cmain"><strong>${esc(p.title)}</strong><span class="small muted">Creato ${GB.fmtDate(p.createdAt)} · ${p.imageCount || 0} foto${
               resp[k] && resp[k].selected ? ` · ${resp[k].selected.length} scelte` : ""
-            }</span></span>${ui.themeChip(p)}${ui.badge(st)}</a>`;
+            }</span>${ui.timeline(p, resp[k], true)}</span>${ui.themeChip(p)}${ui.badge(st)}</a>`;
           })
           .join("") || `<p class="muted">Nessun progetto per questo cliente.</p>`
       }</div>
@@ -1258,7 +1432,7 @@
               h.selected || 0
             } foto scelte</span></summary>
             <div class="two-col"><div>${A.styleBars(h.style)}</div><dl class="answers">${(h.answers || [])
-              .map((a) => `<dt>${esc(a.q)}</dt><dd>${a.a ? esc(a.a) : '<span class="muted">—</span>'}</dd>`)
+              .map((a) => `<dt>${esc(a.q)}${a.qIt && a.qIt !== a.q ? `<span class="tr-q">${esc(a.qIt)}</span>` : ""}</dt><dd>${a.a ? esc(a.a) : '<span class="muted">—</span>'}${a.aIt ? `<span class="tr">🇮🇹 ${esc(a.aIt)}</span>` : ""}</dd>`)
               .join("")}</dl></div></details>`
           )
           .join("")}`

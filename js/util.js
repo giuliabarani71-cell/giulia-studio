@@ -342,8 +342,48 @@
         ["text", "Anything else you'd like to tell me?"],
       ],
     };
-    return (Q[lang] || Q.it).map(([type, text, options]) => ({ id: GB.uid(8), type, text, options: options || [] }));
+    return (Q[lang] || Q.it).map(([type, text, options], k) => ({ id: GB.uid(8), key: "d" + k, type, text, options: options || [] }));
   };
+
+  /* ---------- Traduzione in italiano per Giulia ---------- */
+  // Domanda predefinita riconosciuta (per chiave o per testo identico) → versione italiana
+  GB.defaultMatch = (q, lang) => {
+    if (!q || !lang || lang === "it") return null;
+    const src = GB.defaultQuestions(lang),
+      it = GB.defaultQuestions("it");
+    let k = q.key ? +q.key.slice(1) : src.findIndex((d) => d.text.trim() === (q.text || "").trim());
+    if (k < 0 || !src[k] || !it[k]) return null;
+    // vale solo se il testo non è stato modificato
+    if ((q.text || "").trim() !== src[k].text.trim()) return null;
+    return { src: src[k], it: it[k] };
+  };
+  // Opzione scelta tradotta (stessa posizione nell'elenco)
+  GB.mapOption = (m, q, value) => {
+    if (!m) return null;
+    const i = (q.options || []).indexOf(value);
+    if (i < 0) return null;
+    return (m.it.options || [])[i] || null;
+  };
+  // Traduttore integrato di Chrome (sul dispositivo, nessun dato inviato a terzi). null se non disponibile.
+  // Con un tempo massimo: alcuni browser dichiarano il traduttore ma non rispondono mai.
+  const withTimeout = (pr, ms) => Promise.race([pr, new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), ms))]);
+  GB.translator = async (from) => {
+    try {
+      if (!("Translator" in self)) return null;
+      const av = await withTimeout(self.Translator.availability({ sourceLanguage: from, targetLanguage: "it" }), 4000);
+      if (av === "unavailable") return null;
+      // se il modello va scaricato può servire qualche secondo in più
+      const tr = await withTimeout(self.Translator.create({ sourceLanguage: from, targetLanguage: "it" }), av === "available" ? 6000 : 45000);
+      return {
+        translate: (text) => withTimeout(tr.translate(text), 8000),
+      };
+    } catch (e) {
+      console.warn("Traduttore non disponibile", e);
+      return null;
+    }
+  };
+  GB.googleTranslateLink = (text, from) =>
+    `https://translate.google.com/?sl=${encodeURIComponent(from || "auto")}&tl=it&text=${encodeURIComponent(text || "")}&op=translate`;
 
   /* ---------- Testi della galleria cliente (IT / ES / EN) ---------- */
   GB.I18N = {
