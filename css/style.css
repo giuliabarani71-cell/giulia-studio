@@ -510,3 +510,10 @@ label > input, label > textarea, label > select, label > .copyrow { margin-top: 
   .theme-btn { width: 30px; height: 30px; font-size: 14px; }
 }
 .login-theme { position: fixed; top: 14px; right: 16px; z-index: 5; }
+.lightbox img.soft { filter: blur(6px); transform: scale(1.01); }
+.lightbox img { transition: filter 0.25s; }
+/* Cambio pagina: la vecchia resta visibile e si attenua solo se il caricamento dura più di un istante */
+.view { transition: opacity 0.15s; }
+.view.busy { opacity: 0.45; pointer-events: none; transition: opacity 0.2s 0.15s; }
+.view.busy::before { content: ""; position: fixed; top: 0; left: 0; height: 2px; width: 100%; z-index: 100; background: linear-gradient(90deg, transparent, var(--accent), transparent); background-size: 50% 100%; background-repeat: no-repeat; animation: gbload 1s linear infinite; }
+@keyframes gbload { from { background-position: -50% 0; } to { background-position: 150% 0; } }
