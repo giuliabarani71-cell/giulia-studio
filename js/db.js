@@ -126,6 +126,10 @@
         return r || null;
       },
       saveResponse: (pid, r) => put("responses", { ...r, pid }),
+      async markViewed(pid, fields, base) {
+        const cur = (await get("responses", pid)) || base || {};
+        await put("responses", { ...cur, ...fields, pid });
+      },
 
       async listClients() {
         return (await all("clients")).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
@@ -405,6 +409,13 @@
         const data = clean(r);
         await P(pid).collection("response").doc("main").set(data);
         setMemo("resp:" + pid, data);
+      },
+      // Registra quando il cliente apre la galleria (prima volta e ultimo accesso)
+      async markViewed(pid, fields, base) {
+        const ref = P(pid).collection("response").doc("main");
+        if (base) await ref.set(clean({ ...base, ...fields }));
+        else await ref.set(clean(fields), { merge: true });
+        memo.delete("resp:" + pid);
       },
 
       /* ---- clienti ---- */

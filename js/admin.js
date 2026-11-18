@@ -62,9 +62,11 @@
   };
   // Linea del tempo: creato → aperto → scelte inviate → chiuso
   ui.timeline = (p, r, compact = false) => {
+    const opened = p.openedAt || null;
     const steps = [
       ["Creato", p.createdAt],
-      ["Aperto al cliente", p.openedAt],
+      ["Aperta al cliente", opened, !opened && p.status !== "draft" ? "non registrata" : ""],
+      ["Vista dal cliente", r && r.viewedAt, r && r.lastViewAt && r.lastViewAt !== r.viewedAt ? `ultimo accesso ${GB.fmtDateTime(r.lastViewAt)}` : ""],
       ["Scelte inviate", r && r.status === "submitted" ? r.submittedAt : null],
       ["Chiuso", p.status === "closed" ? p.closedAt : null],
     ];
@@ -72,11 +74,89 @@
       return `<span class="small muted dates">${steps
         .slice(1)
         .filter(([, t]) => t)
-        .map(([l, t]) => `${l.replace(" al cliente", "")} ${GB.fmtDate(t)}`)
+        .map(([l, t]) => `${l.replace(" al cliente", "").replace(" dal cliente", "")} ${GB.fmtDate(t)}`)
         .join(" · ")}</span>`;
     return `<ol class="timeline" data-tour="timeline">${steps
-      .map(([l, t]) => `<li class="${t ? "done" : ""}"><span class="tl-dot"></span><span class="tl-l">${l}</span><span class="tl-d">${t ? GB.fmtDateTime(t) : "—"}</span></li>`)
+      .map(
+        ([l, t, note]) =>
+          `<li class="${t ? "done" : ""}"><span class="tl-dot"></span><span class="tl-l">${l}</span><span class="tl-d">${t ? GB.fmtDateTime(t) : note || "—"}</span>${
+            t && note ? `<span class="tl-n">${note}</span>` : ""
+          }</li>`
+      )
       .join("")}</ol>`;
+  };
+
+  // Il cliente ha fatto qualcosa oltre ad aprire la galleria?
+  A.hasChoices = (r) =>
+    !!(
+      r &&
+      (r.status === "submitted" ||
+        (r.selected || []).length ||
+        Object.keys(r.answers || {}).some((k) => (Array.isArray(r.answers[k]) ? r.answers[k].length : r.answers[k])) ||
+        Object.keys(r.style || {}).length ||
+        Object.values(r.comments || {}).some(Boolean))
+    );
+
+  // Copia nel profilo del cliente: stile (generale e per tema), risposte, foto scelte con le note, date
+  A.saveToProfile = async (p, r) => {
+    if (!p.clientId || !A.hasChoices(r)) return null;
+    const client = await GB.db.getClient(p.clientId);
+    if (!client) return null;
+    const gal = (await GB.db.listImages(p.id).catch(() => [])).filter((i) => i.kind === "gallery");
+    const byId = Object.fromEntries(gal.map((i) => [i.id, i]));
+    const style = r.style || {};
+    const tr = p.translations || {};
+    client.prefs = { ...(client.prefs || {}) };
+    GB.AXES.forEach((ax) => {
+      if (style[ax.key] != null) client.prefs[ax.key] = style[ax.key];
+    });
+    const when = r.submittedAt || r.updatedAt || Date.now();
+    if (p.themeId) {
+      client.prefsByTheme = { ...(client.prefsByTheme || {}) };
+      client.prefsByTheme[p.themeId] = { name: p.themeName || "", style: { ...style }, projectId: p.id, date: when };
+    }
+    client.history = (client.history || []).filter((h) => h.projectId !== p.id);
+    client.history.unshift({
+      projectId: p.id,
+      title: p.title,
+      description: p.description || "",
+      themeId: p.themeId || "",
+      themeName: p.themeName || "",
+      date: when,
+      openedAt: p.openedAt || null,
+      viewedAt: r.viewedAt || null,
+      submittedAt: r.submittedAt || null,
+      closedAt: p.closedAt || null,
+      style,
+      answers: (p.questions || []).map((q) => {
+        const t = (tr.q && tr.q[q.id]) || {};
+        const a = (r.answers || {})[q.id];
+        return { q: q.text, a: Array.isArray(a) ? a.join(", ") : a || "", qIt: t.q || "", aIt: t.a || "" };
+      }),
+      selected: (r.selected || []).length,
+      photos: (r.selected || []).map((iid) => (byId[iid] || {}).name).filter(Boolean),
+      comments: Object.entries(r.comments || {})
+        .filter(([, txt]) => txt)
+        .map(([iid, txt]) => ({ photo: (byId[iid] || {}).name || "", text: txt, it: (tr.c && tr.c[iid]) || "" })),
+    });
+    await GB.db.saveClient(client);
+    p.savedToProfileAt = Date.now();
+    return client;
+  };
+
+  // Chiusura del progetto: registra la data e salva in automatico tutto nel profilo del cliente
+  A.closeProject = async (p) => {
+    A.setStatus(p, "closed");
+    let c = null;
+    try {
+      const r = await GB.db.getResponse(p.id);
+      c = await A.saveToProfile(p, r);
+    } catch (e) {
+      console.warn("Salvataggio nel profilo non riuscito", e);
+    }
+    delete p._r;
+    await GB.db.saveProject(p);
+    GB.toast(c ? `Progetto chiuso: scelte, risposte e stile salvati nel profilo di ${c.name}` : "Progetto chiuso");
   };
 
   /* ---------- Campi del cliente: tipo, nome, contatti, provenienza ---------- */
@@ -284,6 +364,7 @@
             <div class="pbody">
               <div class="row tight">${ui.badge(p._st)}${ui.themeChip(p)}</div>
               <h3>${esc(p.title)}</h3>
+              ${p.description ? `<p class="small muted clamp2">${esc(p.description)}</p>` : ""}
               <p class="muted">${esc(p.clientName || "—")}</p>
               <p class="small muted">${p.imageCount || 0} foto${p._r && p._r.selected ? ` · ${p._r.selected.length} scelte` : ""} · creato ${GB.fmtDate(
               p.createdAt
@@ -322,6 +403,7 @@
       title: "Nuovo progetto",
       body: `<form class="form" id="np">
         <label>Titolo del servizio<input name="title" placeholder="es. Shooting di coppia in spiaggia" required></label>
+        <label>Descrizione <span class="muted small">(facoltativa)</span><textarea name="description" rows="2" placeholder="es. Proposta di matrimonio a sorpresa al tramonto, Playa Bonita"></textarea></label>
         <div class="theme-pick" data-tour="theme-pick">${ui.themePicker(themes, themes[0] && themes[0].id)}</div>
         <label>Cliente<select name="client">
           <option value="__new">＋ Nuovo cliente…</option>
@@ -367,6 +449,7 @@
             } else client = clients.find((c) => c.id === f.client.value);
             const p = await GB.db.saveProject({
               title: f.title.value.trim(),
+              description: f.description.value.trim(),
               clientId: client.id,
               clientName: client.name,
               themeId: theme.id,
@@ -428,7 +511,7 @@
     view().innerHTML = `
       <a href="#/" class="back">‹ Progetti</a>
       <div class="page-head">
-        <div><p class="eyebrow">${esc(p.clientName || "")}</p><h1>${esc(p.title)}</h1><div class="row">${ui.badge(st)}${ui.themeChip(p)}<span class="small muted" id="saveInd"></span></div></div>
+        <div><p class="eyebrow">${esc(p.clientName || "")}</p><h1>${esc(p.title)}</h1><p class="pdesc muted">${esc(p.description || "")}</p><div class="row">${ui.badge(st)}${ui.themeChip(p)}<span class="small muted" id="saveInd"></span></div></div>
         <div class="row">
           <a class="btn ghost" href="#/g/${p.id}/preview" target="_blank" data-tour="preview">Anteprima cliente ↗</a>
           ${r ? `<a class="btn ${st === "submitted" ? "primary" : ""}" href="#/progetto/${p.id}/scelte" data-tour="see-results">Vedi scelte</a>` : ""}
@@ -494,6 +577,7 @@
     const [clients, themes] = await Promise.all([GB.db.listClients(), A.ensureThemes()]);
     $("#tab").innerHTML = `<form class="card form" id="det" onsubmit="return false">
       <label>Titolo<input name="title" value="${esc(p.title)}"></label>
+      <label>Descrizione del progetto<textarea name="description" rows="3" placeholder="Di cosa si tratta, luogo, richieste particolari…">${esc(p.description || "")}</textarea></label>
       <div class="theme-pick">${ui.themePicker(themes, p.themeId)}</div>
       <div class="two">
         <label>Cliente<select name="clientId">${clients
@@ -534,6 +618,10 @@
         p.clientName = c.name;
         showHint();
       } else p[n] = e.target.value;
+      if (n === "description") {
+        const d = $(".pdesc");
+        if (d) d.textContent = p.description;
+      }
       ctx.saveSoon();
     });
     // Tema: scelto da elenco oppure creato al volo
@@ -1033,9 +1121,12 @@
     $$("#stSeg button").forEach(
       (b) =>
         (b.onclick = async () => {
-          A.setStatus(p, b.dataset.s);
-          await ctx.save();
-          GB.toast(p.status === "open" ? "Galleria aperta al cliente" : p.status === "closed" ? "Galleria chiusa" : "Galleria in bozza");
+          if (b.dataset.s === "closed") await A.closeProject(p);
+          else {
+            A.setStatus(p, b.dataset.s);
+            await ctx.save();
+            GB.toast(p.status === "open" ? "Galleria aperta al cliente" : "Galleria in bozza");
+          }
           A.editor(p.id, "condividi");
         })
     );
@@ -1071,7 +1162,8 @@
     const csvText = chosen.map((i) => i.name).join(", ");
     const style = (r && r.style) || {};
     // Traduzione per Giulia: salvata nel progetto (p.translations) per non rifarla ogni volta
-    const needTr = r && p.lang && p.lang !== "it";
+    const hasChoices = A.hasChoices(r);
+    const needTr = hasChoices && p.lang && p.lang !== "it";
     const tr = needTr ? p.translations : null;
     const trStale = !!(tr && r && tr.srcAt && r.updatedAt && r.updatedAt > tr.srcAt);
     const trLine = (it, orig) =>
@@ -1089,7 +1181,7 @@
     view().innerHTML = `
       <a href="#/progetto/${p.id}" class="back">‹ ${esc(p.title)}</a>
       <div class="page-head">
-        <div><p class="eyebrow">Scelte di ${esc(p.clientName || "")}</p><h1>${esc(p.title)}</h1><div class="row">${ui.badge(st)}${ui.themeChip(p)}${
+        <div><p class="eyebrow">Scelte di ${esc(p.clientName || "")}</p><h1>${esc(p.title)}</h1>${p.description ? `<p class="pdesc muted">${esc(p.description)}</p>` : ""}<div class="row">${ui.badge(st)}${ui.themeChip(p)}${
       r && r.submittedAt ? `<span class="small muted">Inviate ${GB.fmtDateTime(r.submittedAt)}</span>` : r ? `<span class="small muted">Ultima modifica ${GB.fmtDateTime(r.updatedAt)}</span>` : ""
     }</div></div>
         <div class="row">
@@ -1099,7 +1191,7 @@
       </div>
       ${ui.timeline(p, r)}
       ${
-        !r
+        !hasChoices
           ? `<div class="empty card"><h2>Ancora nessuna scelta</h2><p class="muted">Quando ${esc(
               p.clientName || "il cliente"
             )} inizierà a scegliere, le foto e le preferenze compariranno qui.</p><a class="btn" href="#/progetto/${p.id}/condividi">Condividi la galleria</a></div>`
@@ -1158,7 +1250,7 @@
       ${
         client
           ? `<div class="card cta" data-tour="save-profile">
-        <div><h3>Profilo di ${esc(client.name)}</h3><p class="small muted">Salva stile e risposte di questo progetto nel profilo del cliente${p.themeName ? `, anche come preferenze per il tema <b>${esc(p.themeName)}</b>` : ""}, così le ritrovi la prossima volta.</p></div>
+        <div><h3>Profilo di ${esc(client.name)}</h3>${p.savedToProfileAt ? `<p class="small ok-note">✓ Salvato nel profilo il ${GB.fmtDateTime(p.savedToProfileAt)}</p>` : ""}<p class="small muted">Salva stile e risposte di questo progetto nel profilo del cliente${p.themeName ? `, anche come preferenze per il tema <b>${esc(p.themeName)}</b>` : ""}. Avviene anche in automatico quando chiudi il progetto.</p></div>
         <div class="row"><a class="btn ghost" href="#/cliente/${client.id}">Apri profilo</a><button class="btn primary" id="toProfile">Salva nel profilo</button></div>
       </div>`
           : ""
@@ -1191,9 +1283,7 @@
       A.results(id);
     });
     on("#close", async () => {
-      A.setStatus(p, "closed");
-      await GB.db.saveProject(p);
-      GB.toast("Progetto concluso");
+      await A.closeProject(p);
       A.results(id);
     });
     on("#reactivate", async () => {
@@ -1247,31 +1337,11 @@
       A.results(id);
     });
     on("#toProfile", async () => {
-      client.prefs = { ...(client.prefs || {}) };
-      GB.AXES.forEach((ax) => {
-        if (style[ax.key] != null) client.prefs[ax.key] = style[ax.key];
-      });
-      client.history = (client.history || []).filter((h) => h.projectId !== p.id);
-      // preferenze per tema: lo stile scelto vale per questo tipo di servizio
-      if (p.themeId) {
-        client.prefsByTheme = { ...(client.prefsByTheme || {}) };
-        client.prefsByTheme[p.themeId] = { name: p.themeName || "", style: { ...style }, projectId: p.id, date: r.submittedAt || r.updatedAt || Date.now() };
-      }
-      client.history.unshift({
-        projectId: p.id,
-        title: p.title,
-        themeId: p.themeId || "",
-        themeName: p.themeName || "",
-        date: r.submittedAt || r.updatedAt || Date.now(),
-        style,
-        answers: (p.questions || []).map((q) => {
-          const t = (tr && tr.q && tr.q[q.id]) || {};
-          return { q: q.text, a: Array.isArray((r.answers || {})[q.id]) ? r.answers[q.id].join(", ") : (r.answers || {})[q.id] || "", qIt: t.q || "", aIt: t.a || "" };
-        }),
-        selected: chosen.length,
-      });
-      await GB.db.saveClient(client);
-      GB.toast("Profilo di " + client.name + " aggiornato");
+      const c = await A.saveToProfile(p, r);
+      if (!c) return GB.toast("Nessun cliente collegato al progetto");
+      await GB.db.saveProject(p);
+      GB.toast("Profilo di " + c.name + " aggiornato");
+      A.results(id);
     });
   };
 
@@ -1431,6 +1501,32 @@
             (h) => `<details class="card hist"><summary><strong>${esc(h.title)}</strong> ${h.themeName ? `<span class="chip theme">${esc(h.themeName)}</span>` : ""} <span class="small muted">${GB.fmtDate(h.date)} · ${
               h.selected || 0
             } foto scelte</span></summary>
+            ${h.description ? `<p class="muted">${esc(h.description)}</p>` : ""}
+            ${
+              h.openedAt || h.viewedAt || h.submittedAt || h.closedAt
+                ? `<p class="small muted">${[
+                    ["Aperta", h.openedAt],
+                    ["Vista", h.viewedAt],
+                    ["Scelte inviate", h.submittedAt],
+                    ["Chiuso", h.closedAt],
+                  ]
+                    .filter(([, t]) => t)
+                    .map(([l, t]) => `${l} ${GB.fmtDate(t)}`)
+                    .join(" · ")}</p>`
+                : ""
+            }
+            ${
+              (h.photos || []).length
+                ? `<p class="small"><b>Foto scelte:</b> <span class="mono">${h.photos.map(esc).join(", ")}</span></p>`
+                : ""
+            }
+            ${
+              (h.comments || []).length
+                ? `<ul class="hist-cmt">${h.comments
+                    .map((c) => `<li><span class="mono small">${esc(c.photo)}</span> “${esc(c.text)}”${c.it ? `<span class="tr">🇮🇹 ${esc(c.it)}</span>` : ""}</li>`)
+                    .join("")}</ul>`
+                : ""
+            }
             <div class="two-col"><div>${A.styleBars(h.style)}</div><dl class="answers">${(h.answers || [])
               .map((a) => `<dt>${esc(a.q)}${a.qIt && a.qIt !== a.q ? `<span class="tr-q">${esc(a.qIt)}</span>` : ""}</dt><dd>${a.a ? esc(a.a) : '<span class="muted">—</span>'}${a.aIt ? `<span class="tr">🇮🇹 ${esc(a.aIt)}</span>` : ""}</dd>`)
               .join("")}</dl></div></details>`

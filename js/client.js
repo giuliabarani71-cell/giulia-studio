@@ -53,6 +53,17 @@
     })).filter((x) => x.a && x.b);
     const qs = (p.questions || []).filter((q) => q.text);
     const r = r0 || { status: "draft", selected: [], comments: {}, style: {}, answers: {} };
+    // Registra l'apertura della galleria da parte del cliente (non nell'anteprima di Giulia).
+    // Se le regole Firestore non sono ancora aggiornate la scrittura fallisce in silenzio e il resto funziona.
+    if (!preview && p.status === "open" && r.status !== "submitted") {
+      const now = Date.now();
+      const stamp = { lastViewAt: now };
+      if (!r.viewedAt) stamp.viewedAt = now;
+      GB.db
+        .markViewed(pid, stamp, r0 ? null : { ...r, updatedAt: now })
+        .then(() => Object.assign(r, stamp))
+        .catch((e) => console.warn("Visita non registrata", e));
+    }
     r.selected = r.selected || [];
     r.comments = r.comments || {};
     r.style = r.style || {};
