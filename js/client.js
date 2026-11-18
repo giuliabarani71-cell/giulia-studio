@@ -412,6 +412,12 @@
         r.status = "submitted";
         r.submittedAt = Date.now();
         await persist();
+        // avvisa Giulia (se non riesce, le scelte restano comunque salvate)
+        try {
+          await GB.db.notify({ type: "submitted", projectId: pid, projectTitle: p.title, clientName: p.clientName, count: sel.size });
+        } catch (e) {
+          console.warn("Notifica non inviata", e);
+        }
         thanks();
       };
       fbar(counterText());

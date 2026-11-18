@@ -64,9 +64,17 @@
           <nav class="nav-links">
             <a data-nav="progetti" href="#/" data-tour="nav-projects">Progetti</a>
             <a data-nav="clienti" href="#/clienti" data-tour="nav-clients">Clienti</a>
+            <a data-nav="temi" href="#/temi" data-tour="nav-themes">Temi</a>
             <a data-nav="guida" href="#/guida" data-tour="nav-guide">Guida</a>
           </nav>
           <div class="nav-right">
+            <div class="bell-wrap" data-tour="bell">
+              <button type="button" class="theme-btn bell" id="bell" aria-label="Notifiche" title="Notifiche">
+                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+                <span class="bell-n" id="bellN" hidden>0</span>
+              </button>
+              <div class="notif-panel" id="notifPanel" hidden></div>
+            </div>
             ${GB.theme.button()}
             ${demo ? `<span class="pill" title="I dati restano in questo browser">Demo</span>` : `<button class="btn ghost small" id="logout">Esci</button>`}
           </div>
@@ -79,6 +87,7 @@
         <main id="view" class="view"></main></div>`;
       const lo = $("#logout");
       if (lo) lo.onclick = () => GB.db.signOut();
+      A.notif.start();
     }
     $$(".nav-links a").forEach((a) => a.classList.toggle("active", a.dataset.nav === active));
     // La pagina precedente resta visibile (attenuata) finché la nuova è pronta: niente schermo bianco
@@ -139,6 +148,8 @@
     });
     const count = (st) => projects.filter((p) => p._st === st).length;
     const filter = sessionStorage.getItem("gb-filter") || "all";
+    const tfilter = sessionStorage.getItem("gb-tfilter") || "";
+    const themeNames = [...new Map(projects.filter((p) => p.themeId).map((p) => [p.themeId, p.themeName])).entries()];
     const groups = {
       all: () => true,
       active: (p) => ["draft", "open", "progress"].includes(p._st),
@@ -170,13 +181,21 @@
             .map(([k, l]) => `<button data-f="${k}" class="${filter === k ? "on" : ""}">${l}</button>`)
             .join("")}
         </div>
+        ${
+          themeNames.length
+            ? `<select id="tfilter" class="tfilter" aria-label="Filtra per tema"><option value="">Tutti i temi</option>${themeNames
+                .map(([id, n]) => `<option value="${id}" ${id === tfilter ? "selected" : ""}>${esc(n)}</option>`)
+                .join("")}</select>`
+            : ""
+        }
         <div class="grid cards" id="plist">${projects
           .filter(groups[filter] || groups.all)
+          .filter((p) => !tfilter || p.themeId === tfilter)
           .map(
             (p) => `<a class="pcard" href="#/progetto/${p.id}${p._st === "submitted" ? "/scelte" : ""}">
             <div class="cover">${p.cover ? `<img src="${p.cover}" alt="">` : `<div class="ph">${ui.initials(p.clientName)}</div>`}</div>
             <div class="pbody">
-              ${ui.badge(p._st)}
+              <div class="row tight">${ui.badge(p._st)}${ui.themeChip(p)}</div>
               <h3>${esc(p.title)}</h3>
               <p class="muted">${esc(p.clientName || "—")}</p>
               <p class="small muted">${p.imageCount || 0} foto${p._r && p._r.selected ? ` · ${p._r.selected.length} scelte` : ""} · ${GB.fmtDate(
@@ -194,6 +213,12 @@
     $("#newProject").onclick = () => A.newProject();
     const seed = $("#seed");
     if (seed) seed.onclick = () => GB.guide.seed(seed);
+    const tf = $("#tfilter");
+    if (tf)
+      tf.onchange = () => {
+        sessionStorage.setItem("gb-tfilter", tf.value);
+        A.dashboard();
+      };
     $$("#filter button").forEach(
       (b) =>
         (b.onclick = () => {
@@ -204,11 +229,12 @@
   };
 
   A.newProject = async (presetClientId) => {
-    const clients = await GB.db.listClients();
+    const [clients, themes] = await Promise.all([GB.db.listClients(), A.ensureThemes()]);
     const res = await GB.modal({
       title: "Nuovo progetto",
       body: `<form class="form" id="np">
         <label>Titolo del servizio<input name="title" placeholder="es. Shooting di coppia in spiaggia" required></label>
+        <div class="theme-pick" data-tour="theme-pick">${ui.themePicker(themes, themes[0] && themes[0].id)}</div>
         <label>Cliente<select name="client">
           <option value="__new">＋ Nuovo cliente…</option>
           ${clients.map((c) => `<option value="${c.id}" ${c.id === presetClientId ? "selected" : ""}>${esc(c.name)}</option>`).join("")}
@@ -235,6 +261,7 @@
         f.client.onchange = sync;
         if (!clients.length || !presetClientId) f.client.value = presetClientId || "__new";
         sync();
+        ui.bindThemePicker($(".theme-pick", w), themes);
       },
       actions: [
         { label: "Annulla", value: null },
@@ -244,6 +271,8 @@
           onClick: async (w) => {
             const f = $("#np", w);
             if (!f.title.value.trim()) return f.title.focus(), false;
+            const theme = await ui.readThemePicker($(".theme-pick", w), themes);
+            if (!theme) return false;
             let client;
             if (f.client.value === "__new") {
               if (!f.cname.value.trim()) return f.cname.focus(), false;
@@ -253,6 +282,9 @@
               title: f.title.value.trim(),
               clientId: client.id,
               clientName: client.name,
+              themeId: theme.id,
+              themeName: theme.name,
+              themeDesc: theme.description || "",
               lang: f.lang.value,
               maxSelections: Math.max(0, +f.max.value || 0),
               message: "",
@@ -309,7 +341,7 @@
     view().innerHTML = `
       <a href="#/" class="back">‹ Progetti</a>
       <div class="page-head">
-        <div><p class="eyebrow">${esc(p.clientName || "")}</p><h1>${esc(p.title)}</h1><div class="row">${ui.badge(st)}<span class="small muted" id="saveInd"></span></div></div>
+        <div><p class="eyebrow">${esc(p.clientName || "")}</p><h1>${esc(p.title)}</h1><div class="row">${ui.badge(st)}${ui.themeChip(p)}<span class="small muted" id="saveInd"></span></div></div>
         <div class="row">
           <a class="btn ghost" href="#/g/${p.id}/preview" target="_blank" data-tour="preview">Anteprima cliente ↗</a>
           ${r ? `<a class="btn ${st === "submitted" ? "primary" : ""}" href="#/progetto/${p.id}/scelte" data-tour="see-results">Vedi scelte</a>` : ""}
@@ -329,7 +361,9 @@
   // Converte in sottofondo le foto caricate con la versione precedente (senza miniatura separata)
   const optimizing = new Set();
   A.bgOptimize = (pid, imgs) => {
-    const old = imgs.some((i) => i.kind === "gallery" && (GB.db.mode === "firebase" ? i.data : !i.thumb));
+    const old = imgs.some(
+      (i) => (i.kind === "gallery" && (GB.db.mode === "firebase" ? i.data : !i.thumb)) || (i.kind === "style" && i.data && !i.thumb)
+    );
     if (!old || optimizing.has(pid) || !GB.db.optimize) return;
     optimizing.add(pid);
     GB.db
@@ -343,9 +377,10 @@
 
   async function tabDetails(ctx) {
     const { p } = ctx;
-    const clients = await GB.db.listClients();
+    const [clients, themes] = await Promise.all([GB.db.listClients(), A.ensureThemes()]);
     $("#tab").innerHTML = `<form class="card form" id="det" onsubmit="return false">
       <label>Titolo<input name="title" value="${esc(p.title)}"></label>
+      <div class="theme-pick">${ui.themePicker(themes, p.themeId)}</div>
       <div class="two">
         <label>Cliente<select name="clientId">${clients
           .map((c) => `<option value="${c.id}" ${c.id === p.clientId ? "selected" : ""}>${esc(c.name)}</option>`)
@@ -377,7 +412,7 @@
     showHint();
     f.addEventListener("input", (e) => {
       const n = e.target.name;
-      if (!n) return;
+      if (!n || n === "themeId" || n === "tname" || n === "tdesc") return;
       if (n === "maxSelections") p[n] = Math.max(0, +e.target.value || 0);
       else if (n === "clientId") {
         const c = clients.find((x) => x.id === e.target.value);
@@ -387,6 +422,32 @@
       } else p[n] = e.target.value;
       ctx.saveSoon();
     });
+    // Tema: scelto da elenco oppure creato al volo
+    const tp = $(".theme-pick", f);
+    if (p.themeId && !themes.some((t) => t.id === p.themeId) && p.themeName) {
+      // tema eliminato: resta il nome salvato nel progetto
+      $("select[name=themeId]", tp).insertAdjacentHTML("afterbegin", `<option value="${p.themeId}" selected>${esc(p.themeName)} (eliminato)</option>`);
+    }
+    if (!p.themeId) $("select[name=themeId]", tp).insertAdjacentHTML("afterbegin", `<option value="" selected disabled>Scegli un tema…</option>`);
+    const useTheme = (t) => {
+      if (!t) return;
+      p.themeId = t.id;
+      p.themeName = t.name;
+      p.themeDesc = t.description || "";
+      ctx.save();
+      const chip = $(".page-head .chip.theme");
+      if (chip) chip.outerHTML = ui.themeChip(p);
+      else $(".page-head .badge").insertAdjacentHTML("afterend", ui.themeChip(p));
+    };
+    ui.bindThemePicker(tp, themes, useTheme);
+    $(".newtheme", tp).insertAdjacentHTML("beforeend", `<button type="button" class="btn small" id="mkTheme">Crea e usa questo tema</button>`);
+    $("#mkTheme").onclick = async () => {
+      const t = await ui.readThemePicker(tp, themes);
+      if (!t) return;
+      useTheme(t);
+      GB.toast("Tema creato");
+      A.editor(p.id, "dettagli");
+    };
     f.lang.addEventListener("change", async () => {
       if (await GB.confirm("Cambiare anche le domande?", "Vuoi sostituire le domande con quelle predefinite nella nuova lingua? Le domande che hai scritto andranno perse.", "Sostituisci")) {
         p.questions = GB.defaultQuestions(p.lang);
@@ -536,7 +597,8 @@
     const get = (axis, side) => ctx.imgs.find((i) => i.id === `style_${axis}_${side}` || (i.kind === "style" && i.axis === axis && i.side === side));
     const setImg = async (axis, side, data) => {
       const id = `style_${axis}_${side}`;
-      const img = { id, kind: "style", axis, side, data, order: 1000 };
+      const thumb = (await GB.resizeImage(data, 480, 0.72)).data;
+      const img = { id, kind: "style", axis, side, data, thumb, order: 1000 };
       await GB.db.addImage(p.id, img);
       ctx.imgs = ctx.imgs.filter((i) => i.id !== id).concat(img);
       p.stylePairs = A.pairCount(ctx.imgs);
@@ -601,7 +663,7 @@
           const a = get(ax.key, "a"),
             b = get(ax.key, "b");
           const slot = (side, im) => `<div class="slot">
-              ${im ? `<img src="${im.data}" alt="">` : `<div class="ph">${side.toUpperCase()}</div>`}
+              ${im ? `<img src="${GB.src(im)}" alt="" decoding="async">` : `<div class="ph">${side.toUpperCase()}</div>`}
               <input class="lbl" data-axis="${ax.key}" data-side="${side}" value="${esc(GB.axisLabel(ax.key, side, lang, p))}">
               <button class="btn small ghost" data-up="${ax.key}" data-side="${side}">Carica ${side.toUpperCase()}</button>
             </div>`;
@@ -872,6 +934,7 @@
     const st = GB.projectStatus(p, r);
     const gal = imgs.filter((i) => i.kind === "gallery");
     A.bgOptimize(id, imgs);
+    if (r && r.status === "submitted") A.notif.readProject(id);
     const sel = new Set((r && r.selected) || []);
     const chosen = gal.filter((i) => sel.has(i.id));
     const comments = (r && r.comments) || {};
@@ -883,13 +946,13 @@
     const styleImg = (axis, v) => {
       if (v == null || v === 0) return "";
       const im = imgs.find((i) => i.kind === "style" && i.axis === axis && i.side === (v < 0 ? "a" : "b"));
-      return im ? `<img src="${im.data}" alt="">` : "";
+      return im ? `<img src="${GB.src(im)}" alt="" decoding="async">` : "";
     };
 
     view().innerHTML = `
       <a href="#/progetto/${p.id}" class="back">‹ ${esc(p.title)}</a>
       <div class="page-head">
-        <div><p class="eyebrow">Scelte di ${esc(p.clientName || "")}</p><h1>${esc(p.title)}</h1><div class="row">${ui.badge(st)}${
+        <div><p class="eyebrow">Scelte di ${esc(p.clientName || "")}</p><h1>${esc(p.title)}</h1><div class="row">${ui.badge(st)}${ui.themeChip(p)}${
       r && r.submittedAt ? `<span class="small muted">Inviate ${GB.fmtDateTime(r.submittedAt)}</span>` : r ? `<span class="small muted">Ultima modifica ${GB.fmtDateTime(r.updatedAt)}</span>` : ""
     }</div></div>
         <div class="row">
@@ -950,7 +1013,7 @@
       ${
         client
           ? `<div class="card cta" data-tour="save-profile">
-        <div><h3>Profilo di ${esc(client.name)}</h3><p class="small muted">Salva stile e risposte di questo progetto nel profilo del cliente, così le ritrovi la prossima volta.</p></div>
+        <div><h3>Profilo di ${esc(client.name)}</h3><p class="small muted">Salva stile e risposte di questo progetto nel profilo del cliente${p.themeName ? `, anche come preferenze per il tema <b>${esc(p.themeName)}</b>` : ""}, così le ritrovi la prossima volta.</p></div>
         <div class="row"><a class="btn ghost" href="#/cliente/${client.id}">Apri profilo</a><button class="btn primary" id="toProfile">Salva nel profilo</button></div>
       </div>`
           : ""
@@ -999,9 +1062,16 @@
         if (style[ax.key] != null) client.prefs[ax.key] = style[ax.key];
       });
       client.history = (client.history || []).filter((h) => h.projectId !== p.id);
+      // preferenze per tema: lo stile scelto vale per questo tipo di servizio
+      if (p.themeId) {
+        client.prefsByTheme = { ...(client.prefsByTheme || {}) };
+        client.prefsByTheme[p.themeId] = { name: p.themeName || "", style: { ...style }, projectId: p.id, date: r.submittedAt || r.updatedAt || Date.now() };
+      }
       client.history.unshift({
         projectId: p.id,
         title: p.title,
+        themeId: p.themeId || "",
+        themeName: p.themeName || "",
         date: r.submittedAt || r.updatedAt || Date.now(),
         style,
         answers: (p.questions || []).map((q) => ({ q: q.text, a: Array.isArray((r.answers || {})[q.id]) ? r.answers[q.id].join(", ") : (r.answers || {})[q.id] || "" })),
@@ -1112,6 +1182,21 @@
           )}</textarea>
         </div>
       </div>
+      ${
+        Object.keys(c.prefsByTheme || {}).length
+          ? `<div class="section-head"><h2>Preferenze per tema</h2><span class="small muted">Lo stile scelto per ogni tipo di servizio</span></div>
+        <div class="grid theme-cards" data-tour="profile-themes">${Object.entries(c.prefsByTheme)
+          .sort((a, b) => (b[1].date || 0) - (a[1].date || 0))
+          .map(
+            ([tid, t]) => `<div class="card tcard">
+            <div class="row between"><h3>${esc(t.name || "Tema")}</h3><button class="icon danger" data-deltheme="${tid}" title="Rimuovi">×</button></div>
+            <p class="small muted">Aggiornate il ${GB.fmtDate(t.date)}</p>
+            ${A.styleBars(t.style)}
+          </div>`
+          )
+          .join("")}</div>`
+          : ""
+      }
       <div class="section-head"><h2>Progetti</h2></div>
       <div class="clist">${
         mine
@@ -1121,7 +1206,7 @@
             <span class="thumb">${p.cover ? `<img src="${p.cover}" alt="">` : ""}</span>
             <span class="cmain"><strong>${esc(p.title)}</strong><span class="small muted">${GB.fmtDate(p.createdAt)} · ${p.imageCount || 0} foto${
               resp[k] && resp[k].selected ? ` · ${resp[k].selected.length} scelte` : ""
-            }</span></span>${ui.badge(st)}</a>`;
+            }</span></span>${ui.themeChip(p)}${ui.badge(st)}</a>`;
           })
           .join("") || `<p class="muted">Nessun progetto per questo cliente.</p>`
       }</div>
@@ -1130,7 +1215,7 @@
           ? `<div class="section-head"><h2>Storico delle risposte</h2></div>
         ${c.history
           .map(
-            (h) => `<details class="card hist"><summary><strong>${esc(h.title)}</strong> <span class="small muted">${GB.fmtDate(h.date)} · ${
+            (h) => `<details class="card hist"><summary><strong>${esc(h.title)}</strong> ${h.themeName ? `<span class="chip theme">${esc(h.themeName)}</span>` : ""} <span class="small muted">${GB.fmtDate(h.date)} · ${
               h.selected || 0
             } foto scelte</span></summary>
             <div class="two-col"><div>${A.styleBars(h.style)}</div><dl class="answers">${(h.answers || [])
@@ -1142,6 +1227,14 @@
       }
       <div class="card danger-zone"><div><h4>Elimina cliente</h4><p class="small muted">I progetti restano, ma senza profilo collegato.</p></div><button class="btn danger" id="delC">Elimina</button></div>`;
 
+    $$("[data-deltheme]").forEach(
+      (b) =>
+        (b.onclick = async () => {
+          delete c.prefsByTheme[b.dataset.deltheme];
+          await GB.db.saveClient(c);
+          A.clientProfile(id);
+        })
+    );
     ui.bindScales(view(), (axis, v) => {
       c.prefs[axis] = v;
       $(`[data-w=${axis}]`).textContent = GB.styleWord(axis, v);
@@ -1173,5 +1266,291 @@
       await GB.db.deleteClient(id);
       location.hash = "#/clienti";
     };
+  };
+
+  /* =================================================================
+   * NOTIFICHE: avviso quando un cliente invia le scelte
+   * ================================================================= */
+  const N = (A.notif = { list: [], seen: new Set(), stop: null, first: true });
+  const ago = (ts) => {
+    const s = Math.round((Date.now() - ts) / 1000);
+    if (s < 60) return "adesso";
+    if (s < 3600) return Math.round(s / 60) + " min fa";
+    if (s < 86400) return Math.round(s / 3600) + " h fa";
+    return GB.fmtDate(ts);
+  };
+  N.start = () => {
+    if (N.stop) N.stop();
+    N.first = true;
+    N.stop = GB.db.watchNotifications((list) => {
+      if (!list) {
+        // regole non aggiornate: la campanella lo spiega invece di restare muta
+        N.blocked = true;
+        N.list = [];
+        N.paint();
+        return;
+      }
+      N.blocked = false;
+      const fresh = list.filter((n) => !N.seen.has(n.id));
+      list.forEach((n) => N.seen.add(n.id));
+      N.list = list;
+      N.paint();
+      // all'apertura le notifiche già presenti non fanno rumore: avvisa solo quelle che arrivano dopo
+      if (!N.first && fresh.length) {
+        fresh.forEach((n) => N.alert(n));
+        const h = location.hash.replace(/^#\/?/, "");
+        if (h === "" || h === "progetti") GB.route();
+      }
+      N.first = false;
+    });
+    const bell = $("#bell");
+    if (bell)
+      bell.onclick = (e) => {
+        e.stopPropagation();
+        const p = $("#notifPanel");
+        p.hidden = !p.hidden;
+        if (!p.hidden) N.paint();
+      };
+    document.addEventListener("click", (e) => {
+      const p = $("#notifPanel");
+      if (p && !p.hidden && !e.target.closest(".bell-wrap")) p.hidden = true;
+    });
+  };
+  N.text = (n) => `${n.clientName || "Un cliente"} ha inviato le scelte${n.count ? ` (${n.count} foto)` : ""}`;
+  N.alert = (n) => {
+    GB.toast("🔔 " + N.text(n));
+    try {
+      if ("Notification" in window && Notification.permission === "granted") {
+        const sys = new Notification("Scelte ricevute", { body: `${N.text(n)} · ${n.projectTitle || ""}`, icon: "img/icons/icon-192.png", tag: n.id });
+        sys.onclick = () => {
+          window.focus();
+          location.hash = `#/progetto/${n.projectId}/scelte`;
+        };
+      }
+    } catch (e) {}
+  };
+  N.paint = () => {
+    const n = N.list.length;
+    const badge = $("#bellN");
+    if (badge) {
+      badge.hidden = !n;
+      badge.textContent = n > 9 ? "9+" : n;
+    }
+    document.title = (n ? `(${n}) ` : "") + "Giulia Barani · Studio";
+    try {
+      if (navigator.setAppBadge) n ? navigator.setAppBadge(n) : navigator.clearAppBadge();
+    } catch (e) {}
+    const p = $("#notifPanel");
+    if (!p || p.hidden) return;
+    const canAsk = "Notification" in window && Notification.permission === "default";
+    const denied = "Notification" in window && Notification.permission === "denied";
+    p.innerHTML = `
+      <div class="np-head"><strong>Notifiche</strong>${n ? `<button class="link small" id="npAll">Segna tutte come lette</button>` : ""}</div>
+      ${
+        n
+          ? N.list
+              .map(
+                (x) => `<a class="np-item" href="#/progetto/${x.projectId}/scelte" data-id="${x.id}">
+            <span class="np-dot"></span>
+            <span><b>${esc(x.clientName || "Un cliente")}</b> ha inviato le scelte${x.count ? ` · ${x.count} foto` : ""}<br>
+            <span class="small muted">${esc(x.projectTitle || "")} · ${ago(x.at)}</span></span></a>`
+              )
+              .join("")
+          : N.blocked
+          ? `<p class="small muted np-empty">Le notifiche non sono ancora attive: aggiorna le regole di Firestore con il file <b>firestore.rules</b> (Firebase › Firestore › Regole › Pubblica).</p>`
+          : `<p class="small muted np-empty">Nessuna novità. Quando un cliente invia le scelte la vedi qui.</p>`
+      }
+      ${
+        canAsk
+          ? `<button class="btn small wide" id="npAsk">Avvisami anche con le notifiche del dispositivo</button>`
+          : denied
+          ? `<p class="small muted np-empty">Le notifiche del dispositivo sono bloccate nelle impostazioni del browser.</p>`
+          : ""
+      }`;
+    $$(".np-item", p).forEach(
+      (a) =>
+        (a.onclick = () => {
+          p.hidden = true;
+          GB.db.markNotificationsRead([a.dataset.id]);
+        })
+    );
+    const all = $("#npAll", p);
+    if (all) all.onclick = () => GB.db.markNotificationsRead(N.list.map((x) => x.id));
+    const ask = $("#npAsk", p);
+    if (ask)
+      ask.onclick = async () => {
+        const r = await Notification.requestPermission();
+        GB.toast(r === "granted" ? "Notifiche del dispositivo attivate" : "Notifiche del dispositivo non attivate");
+        N.paint();
+      };
+  };
+  // Aprendo le scelte di un progetto, le sue notifiche diventano lette
+  N.readProject = (pid) => {
+    const ids = N.list.filter((x) => x.projectId === pid).map((x) => x.id);
+    if (ids.length) GB.db.markNotificationsRead(ids);
+  };
+
+  /* =================================================================
+   * TEMI PROGETTO
+   * ================================================================= */
+  // Al primo uso crea i temi predefiniti, così la scelta è subito pronta
+  A.ensureThemes = async () => {
+    try {
+      let themes = await GB.db.listThemes();
+      if (!themes.length) {
+        for (const [k, t] of GB.DEFAULT_THEMES.entries()) await GB.db.saveTheme({ ...t, order: k });
+        themes = await GB.db.listThemes();
+      }
+      A.themesBlocked = false;
+      return themes;
+    } catch (e) {
+      // Regole Firestore non ancora aggiornate: si lavora con i temi predefiniti (salvati solo nel progetto)
+      if (e.code !== "permission-denied") throw e;
+      A.themesBlocked = true;
+      return GB.DEFAULT_THEMES.map((t, k) => ({ ...t, id: "default-" + k }));
+    }
+  };
+  ui.themeChip = (p) => (p && p.themeName ? `<span class="chip theme" title="${esc(p.themeDesc || "")}">${esc(p.themeName)}</span>` : "");
+
+  // Selettore del tema con descrizione e creazione al volo
+  ui.themePicker = (themes, current) => `
+    <label>Tema del progetto<select name="themeId" required>
+      ${themes.map((t) => `<option value="${t.id}" ${t.id === current ? "selected" : ""}>${esc(t.name)}</option>`).join("")}
+      <option value="__new">＋ Nuovo tema…</option>
+    </select></label>
+    <p class="small muted theme-desc" data-desc></p>
+    <div class="newtheme" hidden>
+      <label>Nome del nuovo tema<input name="tname" placeholder="es. Battesimo"></label>
+      <label>Breve descrizione<textarea name="tdesc" rows="2" placeholder="es. Cerimonia in chiesa e festa con la famiglia"></textarea></label>
+    </div>`;
+  ui.bindThemePicker = (root, themes, onChange) => {
+    const sel = $("select[name=themeId]", root);
+    const sync = () => {
+      const t = themes.find((x) => x.id === sel.value);
+      $("[data-desc]", root).textContent = t ? t.description || "" : "";
+      $(".newtheme", root).hidden = sel.value !== "__new";
+      if (onChange && sel.value !== "__new") onChange(t);
+    };
+    sel.addEventListener("change", sync);
+    $("[data-desc]", root).textContent = (themes.find((x) => x.id === sel.value) || {}).description || "";
+    $(".newtheme", root).hidden = sel.value !== "__new";
+  };
+  // Restituisce il tema scelto (creandolo se è nuovo) oppure null se manca il nome
+  ui.readThemePicker = async (root, themes) => {
+    const sel = $("select[name=themeId]", root);
+    if (sel.value !== "__new") return themes.find((t) => t.id === sel.value) || null;
+    const name = $("[name=tname]", root).value.trim();
+    if (!name) {
+      $("[name=tname]", root).focus();
+      return null;
+    }
+    const t = { name, description: $("[name=tdesc]", root).value.trim(), order: themes.length };
+    try {
+      return await GB.db.saveTheme(t);
+    } catch (e) {
+      if (e.code !== "permission-denied") throw e;
+      return { ...t, id: "custom-" + GB.uid(8) }; // resta salvato nel progetto
+    }
+  };
+
+  A.themeForm = (t = {}) =>
+    GB.modal({
+      title: t.id ? "Modifica tema" : "Nuovo tema",
+      body: `<form class="form" id="tf" onsubmit="return false">
+        <label>Nome<input name="name" value="${esc(t.name || "")}" placeholder="es. Matrimonio" required></label>
+        <label>Breve descrizione<textarea name="description" rows="3" placeholder="Cosa comprende questo tipo di servizio">${esc(t.description || "")}</textarea></label>
+      </form>`,
+      actions: [
+        { label: "Annulla", value: null },
+        {
+          label: "Salva",
+          primary: true,
+          onClick: async (w) => {
+            const f = $("#tf", w);
+            if (!f.name.value.trim()) return f.name.focus(), false;
+            return GB.db.saveTheme({ ...t, name: f.name.value.trim(), description: f.description.value.trim() });
+          },
+        },
+      ],
+    });
+
+  // Pagina Temi: elenco, progetti per tema e stile medio scelto dai clienti di quel tema
+  A.themes = async () => {
+    const [themes, projects] = await Promise.all([A.ensureThemes(), GB.db.listProjects()]);
+    const resp = await Promise.all(projects.map((p) => GB.db.getResponse(p.id).catch(() => null)));
+    const stats = {};
+    projects.forEach((p, k) => {
+      const s = (stats[p.themeId] = stats[p.themeId] || { n: 0, sent: 0, sum: {}, cnt: {} });
+      s.n++;
+      const r = resp[k];
+      if (r && r.status === "submitted") {
+        s.sent++;
+        GB.AXES.forEach((ax) => {
+          const v = (r.style || {})[ax.key];
+          if (v != null) {
+            s.sum[ax.key] = (s.sum[ax.key] || 0) + v;
+            s.cnt[ax.key] = (s.cnt[ax.key] || 0) + 1;
+          }
+        });
+      }
+    });
+    const avg = (s) => {
+      if (!s || !s.sent) return null;
+      const o = {};
+      GB.AXES.forEach((ax) => (o[ax.key] = s.cnt[ax.key] ? Math.round((s.sum[ax.key] / s.cnt[ax.key]) * 2) / 2 : null));
+      return o;
+    };
+    view().innerHTML = `
+      <div class="page-head"><div><p class="eyebrow">${themes.length} temi</p><h1>Temi dei progetti</h1>
+        <p class="muted small">Ogni progetto ha un tema. Qui vedi quanti progetti ci sono per tema e lo stile che i clienti hanno scelto più spesso.</p></div>
+        <button class="btn primary" id="newT" data-tour="new-theme" ${A.themesBlocked ? "disabled" : ""}>＋ Nuovo tema</button></div>
+      ${
+        A.themesBlocked
+          ? `<div class="notice">Per creare e modificare i temi aggiorna le regole di Firestore con il file <b>firestore.rules</b> (Firebase › Firestore › Regole › Pubblica). Intanto puoi già usare i temi predefiniti nei progetti.</div>`
+          : ""
+      }
+      <div class="grid theme-cards">${themes
+        .map((t) => {
+          const s = stats[t.id];
+          const a = avg(s);
+          return `<div class="card tcard">
+            <div class="row between"><h3>${esc(t.name)}</h3>
+              <div class="row tight">${A.themesBlocked ? "" : `<button class="icon" data-edit="${t.id}" title="Modifica">✎</button><button class="icon danger" data-del="${t.id}" title="Elimina">×</button>`}</div></div>
+            <p class="muted">${esc(t.description || "Nessuna descrizione")}</p>
+            <p class="small muted">${s ? `${s.n} progett${s.n === 1 ? "o" : "i"} · ${s.sent} con scelte inviate` : "Nessun progetto"}</p>
+            ${a ? `<p class="small"><b>Stile medio scelto dai clienti</b></p>${A.styleBars(a)}` : ""}
+          </div>`;
+        })
+        .join("")}</div>`;
+    $("#newT").onclick = async () => {
+      if (await A.themeForm()) A.themes();
+    };
+    $$("[data-edit]").forEach(
+      (b) =>
+        (b.onclick = async () => {
+          const t = themes.find((x) => x.id === b.dataset.edit);
+          const saved = await A.themeForm({ ...t });
+          if (!saved) return;
+          // aggiorna nome e descrizione anche nei progetti di quel tema
+          for (const p of projects.filter((p) => p.themeId === t.id)) {
+            p.themeName = saved.name;
+            p.themeDesc = saved.description;
+            delete p._r;
+            await GB.db.saveProject(p);
+          }
+          A.themes();
+        })
+    );
+    $$("[data-del]").forEach(
+      (b) =>
+        (b.onclick = async () => {
+          const t = themes.find((x) => x.id === b.dataset.del);
+          const n = (stats[t.id] || {}).n || 0;
+          if (!(await GB.confirm("Eliminare il tema?", n ? `“${esc(t.name)}” è usato da ${n} progetti: i progetti restano, con il nome del tema salvato.` : `“${esc(t.name)}” verrà eliminato.`, "Elimina", true)))
+            return;
+          await GB.db.deleteTheme(t.id);
+          A.themes();
+        })
+    );
   };
 })();

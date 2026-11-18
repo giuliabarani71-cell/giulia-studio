@@ -196,6 +196,23 @@
         { route: "#/clienti", sel: "[data-tour=new-client]", title: "Nuovi clienti", text: "Puoi creare un cliente da qui o direttamente quando crei un nuovo progetto." },
       ],
     },
+    {
+      key: "themes",
+      title: "Temi e notifiche",
+      icon: "◇",
+      text: "Ogni progetto ha un tema; quando un cliente invia, ti arriva un avviso.",
+      bullets: [
+        "Il <b>tema</b> (Matrimonio, Coppia, Famiglia…) si sceglie creando il progetto e ha una breve descrizione",
+        "Le scelte del cliente si salvano nel profilo <b>per tema</b>",
+        "La <b>campanella</b> segnala le scelte appena inviate, anche con le notifiche del dispositivo",
+      ],
+      needs: false,
+      steps: () => [
+        { route: "#/temi", sel: "[data-tour=nav-themes]", title: "Temi", text: "Qui trovi i temi dei progetti con la loro descrizione. Puoi modificarli, aggiungerne o eliminarli. Per ogni tema vedi quanti progetti ci sono e lo stile medio scelto dai clienti." },
+        { route: "#/temi", sel: "[data-tour=new-theme]", title: "Nuovo tema", text: "Dai un nome e una breve descrizione. Puoi crearne uno anche al volo mentre crei un progetto, scegliendo “＋ Nuovo tema…”." },
+        { route: "#/", sel: "[data-tour=bell]", title: "Notifiche", text: "Quando un cliente preme “Invia”, qui compare un numero e un avviso. Apri la campanella e premi “Avvisami anche con le notifiche del dispositivo” per riceverle anche quando l'app è in un'altra scheda." },
+      ],
+    },
   ];
 
   G.run = async (key) => {
@@ -245,6 +262,8 @@
           ["Perché bassa risoluzione?", "Le foto servono solo per scegliere: l'app le riduce a 1280 px così si caricano in fretta, restano nel piano gratuito di Firebase e non regali i file in alta qualità."],
           ["Come trovo le foto scelte in Lightroom?", "Nella pagina delle scelte premi “Copia per Lightroom”, poi in Libreria apri il filtro Testo › Nome file › Contiene e incolla."],
           ["Posso riusare le stesse coppie di stile?", "Sì: nella scheda Stile usa “Copia da un altro progetto”."],
+          ["A cosa serve il tema del progetto?", "Raggruppa i progetti per tipo di servizio. Quando salvi le scelte nel profilo del cliente, lo stile viene ricordato anche per quel tema: così sai cosa preferisce per un matrimonio e cosa per un ritratto."],
+          ["Come so che un cliente ha scelto?", "La campanella in alto mostra il numero di scelte appena inviate e compare un avviso. Se attivi le notifiche del dispositivo, arrivano anche quando l'app è aperta in un'altra scheda. Ad app chiusa non arrivano: le vedi alla prossima apertura."],
           ["In che lingua vede la galleria il cliente?", "In quella scelta nel progetto (italiano, spagnolo o inglese), ma può cambiarla dai pulsanti in alto."],
         ]
           .map(([q, a]) => `<details class="card"><summary>${q}</summary><p class="muted">${a}</p></details>`)
@@ -269,7 +288,10 @@
     if (u)
       u.onclick = async () => {
         if (!(await GB.confirm("Eliminare i dati di esempio?", "Cancello solo i clienti e i progetti di esempio. I tuoi dati restano.", "Elimina", true))) return;
-        for (const p of (await GB.db.listProjects()).filter((p) => p.demo)) await GB.db.deleteProject(p.id);
+        const demoP = (await GB.db.listProjects()).filter((p) => p.demo);
+        const demoN = GB.admin.notif.list.filter((n) => demoP.some((p) => p.id === n.projectId)).map((n) => n.id);
+        if (demoN.length) await GB.db.markNotificationsRead(demoN);
+        for (const p of demoP) await GB.db.deleteProject(p.id);
         for (const c of (await GB.db.listClients()).filter((c) => c.demo)) await GB.db.deleteClient(c.id);
         GB.toast("Dati di esempio eliminati");
         G.page();
@@ -282,6 +304,10 @@
       btn.disabled = true;
       btn.textContent = "Creo i dati…";
     }
+    const themes = await GB.admin.ensureThemes();
+    const th = (n) => themes.find((t) => t.name === n) || themes[0];
+    const tCoppia = th("Coppia"),
+      tRitratto = th("Ritratto");
     const c1 = await GB.db.saveClient({
       name: "María y Luis Pérez",
       email: "maria.perez@example.com",
@@ -303,6 +329,9 @@
       title: "Sesión en la playa · Las Terrenas",
       clientId: c1.id,
       clientName: c1.name,
+      themeId: tCoppia.id,
+      themeName: tCoppia.name,
+      themeDesc: tCoppia.description || "",
       lang: "es",
       maxSelections: 12,
       message: "",
@@ -340,10 +369,14 @@
       updatedAt: Date.now() - 3600e3,
       submittedAt: Date.now() - 3600e3,
     });
+    if (GB.db.notify) await GB.db.notify({ type: "submitted", projectId: p.id, projectTitle: p.title, clientName: c1.name, count: selected.length }).catch(() => {});
     const p2 = await GB.db.saveProject({
       title: "Ritratti al Cosón",
       clientId: c2.id,
       clientName: c2.name,
+      themeId: tRitratto.id,
+      themeName: tRitratto.name,
+      themeDesc: tRitratto.description || "",
       lang: "it",
       maxSelections: 8,
       message: "",

@@ -32,6 +32,8 @@
         case "progetto":
           if (parts[2] === "scelte") return await GB.admin.results(parts[1]);
           return await GB.admin.editor(parts[1], parts[2]);
+        case "temi":
+          return await GB.admin.themes();
         case "guida":
           return await GB.guide.page();
         default:

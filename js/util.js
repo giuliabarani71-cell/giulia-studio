@@ -531,6 +531,17 @@
     GB.$$(".theme-btn").forEach((b) => (b.textContent = GB.theme.icon()))
   );
 
+  // Temi creati al primo utilizzo (Giulia può modificarli o aggiungerne altri nella pagina Temi)
+  GB.DEFAULT_THEMES = [
+    { name: "Matrimonio", description: "Cerimonia, ricevimento e ritratti degli sposi: il racconto completo della giornata." },
+    { name: "Coppia", description: "Sessione di coppia o pre-matrimonio, spontanea e romantica, spesso in spiaggia al tramonto." },
+    { name: "Famiglia", description: "Ritratti di famiglia con bambini, naturali e giocosi." },
+    { name: "Maternità", description: "Servizio in gravidanza: luce morbida e atmosfera intima." },
+    { name: "Ritratto", description: "Ritratto individuale o personal branding." },
+    { name: "Brand e attività", description: "Foto per attività, prodotti, strutture e social aziendali." },
+    { name: "Evento", description: "Feste, compleanni ed eventi privati o aziendali." },
+  ];
+
   // Sorgente leggera per le griglie: la miniatura se c'è, altrimenti la foto
   GB.src = (i) => (i && (i.thumb || i.data)) || "";
 

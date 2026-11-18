@@ -34,13 +34,16 @@
     const open = () =>
       dbp ||
       (dbp = new Promise((res, rej) => {
-        const r = indexedDB.open("gb-studio", 1);
+        const r = indexedDB.open("gb-studio", 2);
         r.onupgradeneeded = () => {
           const d = r.result;
-          d.createObjectStore("projects", { keyPath: "id" });
-          d.createObjectStore("images", { keyPath: "id" }).createIndex("pid", "pid");
-          d.createObjectStore("responses", { keyPath: "pid" });
-          d.createObjectStore("clients", { keyPath: "id" });
+          const has = (n) => d.objectStoreNames.contains(n);
+          if (!has("projects")) d.createObjectStore("projects", { keyPath: "id" });
+          if (!has("images")) d.createObjectStore("images", { keyPath: "id" }).createIndex("pid", "pid");
+          if (!has("responses")) d.createObjectStore("responses", { keyPath: "pid" });
+          if (!has("clients")) d.createObjectStore("clients", { keyPath: "id" });
+          if (!has("themes")) d.createObjectStore("themes", { keyPath: "id" });
+          if (!has("notifications")) d.createObjectStore("notifications", { keyPath: "id" });
         };
         r.onsuccess = () => res(r.result);
         r.onerror = () => rej(r.error);
@@ -111,7 +114,7 @@
       async optimize(pid) {
         let n = 0;
         for (const i of await this.listImages(pid))
-          if (i.kind === "gallery" && i.data && !i.thumb) {
+          if ((i.kind === "gallery" || i.kind === "style") && i.data && !i.thumb) {
             await this.updateImage(pid, i.id, { thumb: await makeThumb(i.data) });
             n++;
           }
@@ -136,6 +139,45 @@
         return c;
       },
       deleteClient: (id) => del("clients", id),
+
+      /* ---- temi ---- */
+      async listThemes() {
+        return (await all("themes")).sort((a, b) => (a.order || 0) - (b.order || 0) || (a.name || "").localeCompare(b.name || ""));
+      },
+      async saveTheme(t) {
+        t.id = t.id || GB.uid();
+        t.createdAt = t.createdAt || Date.now();
+        t.updatedAt = Date.now();
+        await put("themes", t);
+        return t;
+      },
+      deleteTheme: (id) => del("themes", id),
+
+      /* ---- notifiche ---- */
+      async notify(n) {
+        await put("notifications", { ...n, id: GB.uid(), read: false, at: Date.now() });
+      },
+      // In demo controlla ogni 4 secondi (anche le scelte inviate da un'altra scheda)
+      watchNotifications(cb) {
+        let last = "";
+        const tick = async () => {
+          const list = (await all("notifications")).filter((n) => !n.read).sort((a, b) => b.at - a.at);
+          const sig = list.map((n) => n.id).join();
+          if (sig !== last) {
+            last = sig;
+            cb(list);
+          }
+        };
+        tick();
+        const iv = setInterval(tick, 4000);
+        return () => clearInterval(iv);
+      },
+      async markNotificationsRead(ids) {
+        for (const id of ids) {
+          const n = await get("notifications", id);
+          if (n) await put("notifications", { ...n, read: true });
+        }
+      },
     };
   }
 
@@ -339,7 +381,13 @@
             })
           );
         }
-        return old.length;
+        // coppie di stile senza miniatura: aggiunge solo la miniatura (la foto resta per la galleria)
+        const styles = (await this.listImages(pid)).filter((i) => i.kind === "style" && i.data && !i.thumb);
+        for (const i of styles) {
+          const thumb = await makeThumb(i.data);
+          await this.updateImage(pid, i.id, { thumb });
+        }
+        return old.length + styles.length;
       },
 
       /* ---- scelte del cliente ---- */
@@ -391,6 +439,65 @@
         await fs.collection("clients").doc(id).delete();
         memo.delete("client:" + id);
         await patchList("clients", { id }, true);
+      },
+
+      /* ---- temi (solo Giulia) ---- */
+      async listThemes() {
+        const list = await cached("themes", TTL_LIST, async () => (await fs.collection("themes").get()).docs.map(snap));
+        return list
+          .map((t) => ({ ...t }))
+          .sort((a, b) => (a.order || 0) - (b.order || 0) || (a.name || "").localeCompare(b.name || ""));
+      },
+      async saveTheme(t) {
+        const ref = t.id ? fs.collection("themes").doc(t.id) : fs.collection("themes").doc();
+        t.id = ref.id;
+        t.createdAt = t.createdAt || Date.now();
+        t.updatedAt = Date.now();
+        const data = clean(t);
+        delete data.id;
+        await ref.set(data);
+        await patchList("themes", { ...data, id: ref.id });
+        return t;
+      },
+      async deleteTheme(id) {
+        await fs.collection("themes").doc(id).delete();
+        await patchList("themes", { id }, true);
+      },
+
+      /* ---- notifiche ---- */
+      // Scritta dalla galleria del cliente quando invia le scelte (le regole permettono solo questo)
+      notify: (n) =>
+        fs.collection("notifications").add({
+          type: n.type,
+          projectId: n.projectId,
+          projectTitle: String(n.projectTitle || "").slice(0, 200),
+          clientName: String(n.clientName || "").slice(0, 200),
+          count: n.count || 0,
+          read: false,
+          at: Date.now(),
+        }),
+      // Ascolto in tempo reale: arriva appena il cliente preme "Invia"
+      watchNotifications(cb) {
+        return fs
+          .collection("notifications")
+          .where("read", "==", false)
+          .onSnapshot(
+            (q) => {
+              const list = q.docs.map(snap).sort((a, b) => b.at - a.at);
+              // una notifica nuova = scelte nuove: la memoria delle scelte va riletta
+              list.forEach((n) => memo.delete("resp:" + n.projectId));
+              cb(list);
+            },
+            (e) => {
+              console.warn("Notifiche non disponibili", e);
+              cb(null, e);
+            }
+          );
+      },
+      async markNotificationsRead(ids) {
+        const b = fs.batch();
+        ids.forEach((id) => b.update(fs.collection("notifications").doc(id), { read: true }));
+        await b.commit();
       },
     };
   }
