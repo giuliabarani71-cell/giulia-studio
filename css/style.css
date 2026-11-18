@@ -569,3 +569,14 @@ label > input, label > textarea, label > select, label > .copyrow { margin-top: 
 a.tr { color: var(--muted); text-decoration: underline; }
 .tr-q { display: block; font-size: 13px; color: var(--muted); font-style: italic; margin-top: 1px; }
 .rgrid .tr { font-size: 12px; }
+
+/* ---------- Descrizione progetto, storico ---------- */
+.pdesc { margin: -2px 0 10px; max-width: 760px; font-size: 16px; }
+.pdesc:empty { display: none; }
+.clamp2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin: 2px 0 4px !important; }
+.timeline { grid-template-columns: repeat(5, 1fr); }
+.timeline .tl-n { font-size: 12px; color: var(--muted); }
+.ok-note { color: var(--green); margin: 0 0 4px; }
+.hist-cmt { margin: 0 0 12px; padding-left: 18px; font-size: 14px; }
+.hist-cmt li { margin-bottom: 4px; }
+@media (max-width: 760px) { .timeline { grid-template-columns: repeat(2, 1fr); } .timeline li::before { display: none; } }
