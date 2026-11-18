@@ -17,6 +17,26 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
+    // Temi dei progetti (Matrimonio, Coppia, …): solo Giulia
+    match /themes/{themeId} {
+      allow read, write: if isAdmin();
+    }
+
+    // Notifiche: il cliente può solo crearne una quando invia le scelte di un progetto aperto;
+    // le legge e le segna come lette solo Giulia.
+    match /notifications/{nid} {
+      allow read, update, delete: if isAdmin();
+      allow create: if request.resource.data.keys().hasOnly(['type', 'projectId', 'projectTitle', 'clientName', 'count', 'read', 'at'])
+        && request.resource.data.type == 'submitted'
+        && request.resource.data.read == false
+        && request.resource.data.projectId is string
+        && request.resource.data.projectTitle is string && request.resource.data.projectTitle.size() <= 200
+        && request.resource.data.clientName is string && request.resource.data.clientName.size() <= 200
+        && request.resource.data.count is int
+        && exists(/databases/$(database)/documents/projects/$(request.resource.data.projectId))
+        && get(/databases/$(database)/documents/projects/$(request.resource.data.projectId)).data.status == 'open';
+    }
+
     match /projects/{projectId} {
       // Chi ha il link (ID casuale di 20 caratteri) può leggere il singolo progetto,
       // ma non può elencare tutti i progetti.

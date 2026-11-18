@@ -5,6 +5,8 @@ Web app per gestire i clienti di Giulia Barani Photography e le loro scelte dell
 - **Giulia** crea un progetto per un cliente. Dentro carica 20–30 foto a bassa risoluzione, 4 coppie di immagini di stile e le domande.
 - **Il cliente** apre un link personale, senza registrarsi. Sceglie le foto con il cuore e può lasciare una nota. Indica lo stile che preferisce (temperatura, saturazione, contrasto, high/low key), risponde alle domande e invia. La galleria è in italiano, spagnolo o inglese.
 - **Giulia** vede le scelte in una pagina dedicata: foto scelte, nomi dei file da incollare in Lightroom, stile preferito e risposte. Con un clic salva tutto nel **profilo del cliente**, che resta consultabile e modificabile.
+- Ogni progetto ha un **tema** (Matrimonio, Coppia, Famiglia…) con una breve descrizione, scelto alla creazione. Le scelte del cliente vengono salvate nel profilo anche **per tema**, e la pagina **Temi** mostra lo stile medio scelto dai clienti di ogni tema.
+- Quando un cliente invia le scelte, Giulia riceve una **notifica**: numero sulla campanella, avviso nell'app e, se lo attiva, notifica del dispositivo. L'avviso arriva mentre l'app è aperta, anche in una scheda in secondo piano. Ad app chiusa le notifiche restano e si vedono alla riapertura.
 - Nella sezione **Guida** c'è un tour interattivo che spiega ogni funzione.
 
 È fatta solo di HTML, CSS e JavaScript, senza installazioni né build: va bene per GitHub Pages.
@@ -72,9 +74,13 @@ img/logo.png        logo
 
 | Percorso | Contenuto | Chi può accedere |
 |---|---|---|
-| `clients/{id}` | nome, contatti, lingua, preferenze di stile, note, storico | solo Giulia |
+| `clients/{id}` | nome, contatti, lingua, preferenze di stile (generali e per tema), note, storico | solo Giulia |
+| `themes/{id}` | nome e breve descrizione del tema | solo Giulia |
+| `notifications/{id}` | avviso "il cliente ha inviato le scelte" | il cliente può solo crearla; la legge Giulia |
 | `projects/{id}` | titolo, cliente, lingua, max foto, messaggio, domande, stato | Giulia; il cliente legge solo il suo |
 | `projects/{id}/images/{id}` | foto e coppie di stile (base64) | Giulia; il cliente in sola lettura |
 | `projects/{id}/response/main` | foto scelte, note, stile, risposte | Giulia; il cliente scrive finché la galleria è aperta |
 
 Le preferenze di stile vanno da **-2** (molto A: calda / vivace / contrastata / luminosa) a **+2** (molto B: fredda / tenue / morbida / scura). Lo **0** significa indifferente.
+
+> **Dopo ogni aggiornamento delle regole** (`firestore.rules`) ricordati di incollarle di nuovo in Firebase › Firestore › Regole e premere **Pubblica**: senza questo passaggio temi e notifiche non vengono salvati.
