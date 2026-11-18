@@ -8,7 +8,8 @@ Web app per gestire i clienti di Giulia Barani Photography e le loro scelte dell
 - Ogni progetto ha un **tema** (Matrimonio, Coppia, Famiglia…) con una breve descrizione, scelto alla creazione. Le scelte del cliente vengono salvate nel profilo anche **per tema**, e la pagina **Temi** mostra lo stile medio scelto dai clienti di ogni tema.
 - Quando un cliente invia le scelte, Giulia riceve una **notifica**: numero sulla campanella, avviso nell'app e, se lo attiva, notifica del dispositivo. L'avviso arriva mentre l'app è aperta, anche in una scheda in secondo piano. Ad app chiusa le notifiche restano e si vedono alla riapertura.
 - Il **profilo cliente** contiene tipo (Privato o Azienda, con il referente per le aziende), telefono/WhatsApp, email e provenienza. Telefono e WhatsApp sono cliccabili.
-- Ogni progetto registra le **date** di creazione, apertura al cliente, invio delle scelte e chiusura, mostrate come una linea del tempo.
+- Ogni progetto ha una **descrizione** e registra le **date** di creazione, apertura al cliente, prima visita del cliente (con l'ultimo accesso), invio delle scelte e chiusura, mostrate come una linea del tempo.
+- Alla **chiusura del progetto** stile, risposte, foto scelte e note del cliente vengono salvati in automatico nel suo profilo, nello storico e nelle preferenze per tema.
 - Se la galleria è in spagnolo o inglese, nella pagina delle scelte il pulsante **🇮🇹 Traduci in italiano** traduce domande, risposte e note del cliente. Le domande predefinite vengono tradotte sempre. I testi liberi usano il traduttore integrato di Chrome, che lavora sul dispositivo e non invia nulla a terzi; dove non c'è, compare un link a Google Traduttore. La traduzione viene salvata nel progetto.
 - Nella sezione **Guida** c'è un tour interattivo che spiega ogni funzione.
 
