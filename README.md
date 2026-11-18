@@ -35,7 +35,7 @@ Apri la pagina, vai su **Guida** e premi **Crea dati di esempio**. Poi fai il to
 5. Vai in ⚙️ **Impostazioni progetto** → *Le tue app* → icona **</>** (Web) e registra l'app senza Hosting. Copia i valori di `firebaseConfig` dentro `js/config.js`, poi compila `adminEmail` con la stessa email.
 6. Quando l'app sarà online, aggiungi il dominio in **Authentication** → *Impostazioni* → **Domini autorizzati**, ad esempio `tuonome.github.io`.
 
-Non serve **Storage**: le foto sono salvate in Firestore come JPEG ridotti (lato lungo 1400 px, circa 150–300 KB l'uno). Con il piano gratuito ci sono 1 GB di spazio e 50.000 letture al giorno, abbastanza per centinaia di gallerie. Quando un progetto è concluso puoi eliminarlo per liberare spazio.
+Non serve **Storage**: le foto sono salvate in Firestore come JPEG ridotti (lato lungo 1280 px, circa 150–300 KB l'uno). Con il piano gratuito ci sono 1 GB di spazio e 50.000 letture al giorno, abbastanza per centinaia di gallerie. Quando un progetto è concluso puoi eliminarlo per liberare spazio.
 
 > Le chiavi in `config.js` non sono segrete: con Firebase è normale che siano pubbliche. Quello che protegge i dati sono le **regole** del punto 4. Con quelle regole:
 > - solo Giulia, dopo il login, vede i clienti e l'elenco dei progetti;
